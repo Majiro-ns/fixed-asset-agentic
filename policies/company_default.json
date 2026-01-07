@@ -1,0 +1,16 @@
+﻿{
+  "version": "0.1",
+  "company_id": "demo",
+  "description": "設備会社向けデモ用の企業前提ポリシー。撤去・移設などは要確認(Stop/GUIDANCE)を強化する設定。",
+  "keywords": {
+    "asset_add": ["更新", "新設", "設置", "増設"],
+    "expense_add": ["保守", "点検", "修理", "調整"],
+    "guidance_add": ["撤去", "廃棄", "移設", "既設", "更新", "一式", "設置", "配線"]
+  },
+  "thresholds": {
+    "guidance_amount_jpy": 1000000
+  },
+  "regex": {
+    "always_guidance": ".*(撤去|移設).*"
+  }
+}

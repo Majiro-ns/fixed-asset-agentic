@@ -1,0 +1,15 @@
+﻿__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.DS_Store
+.venv/
+.env
+data/results/*.json
+# local memo / scratch
+*.tmp
+*.log
+*_memo.txt
+*_メモ.txt
+# runtime data
+data/

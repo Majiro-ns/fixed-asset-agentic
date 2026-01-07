@@ -1,0 +1,129 @@
+1) INDEX.md（運用ルールの憲法）
+
+更新頻度：低（たまに）／重要度：最上位
+
+ここは「作業のやり方」を決める場所です。あなたが決めるのは主にこの3つ：
+
+承認が必要な変更（例：税務判断ロジック、ルールの意味変更、閾値変更）
+
+止まる条件（例：CI 3連続失敗、warning増加、根拠欠落）
+
+優先テーマ（A1〜A4の更新）
+
+Codexは INDEX を読み、ここに従って動く前提。
+
+2) docs/03_rules.md（危険領域：AIに触らせない線引き）
+
+更新頻度：中／重要度：最上位
+
+固定資産で一番事故りやすいのはここです。あなたが書くべきは：
+
+Danger zone（勝手に変えたらダメ）
+
+例：税法解釈、耐用年数・資産区分の根拠ロジック、勘定科目の定義、証憑の扱い
+
+Approval required（必ず人の承認）
+
+Evidence must（必ず残す根拠）
+
+page / method / snippet の必須化など
+
+Silent fail禁止（黙って失敗しない）
+
+warning設計、例外の握り潰し禁止
+
+3) docs/01_commands.md（品質ゲートの“唯一の正解”）
+
+更新頻度：低〜中／重要度：高
+
+ここは「どうやって合格判定するか」です。あなたが確定するのは：
+
+テストコマンド（pytest）
+
+lint（入れるならruff等）
+
+ビルド/型チェック（必要なら）
+
+Codexは scripts/dev_run_checks.ps1 を通して品質を守ります。
+コマンドが曖昧だと、毎回止まります。
+
+4) docs/specs/*.md（あなたの“依頼書”＝最重要の作業指示）
+
+更新頻度：高／重要度：最上位
+
+これが **「あなたの定義 → Codex自律開発」**の入力です。
+Issue本文に SPEC: として貼るのは必ずこのファイル。
+
+specsに必ず書くべき項目（固定資産版）
+
+Goal（何を改善したいか）
+
+Non-goals（今回はやらない）
+
+Input/Output（入力PDF/JSON、出力finalの最低要件）
+
+Acceptance Criteria（合格条件：ここが命）
+
+Evidence（根拠に必須の項目）
+
+Risks（税務判断の扱い：提案止まり等）
+
+合格条件の例（そのまま使える）
+
+final.json に meta.warnings が必ずある（空でも可）
+
+evidence は page/method/snippet を必ず含む
+
+OCR無効時は OCR_DISABLED が warning で説明される
+
+tests が追加/更新され、pytest green
+
+5) tests/ の“期待値”（あなたが決める＝合格条件の裏取り）
+
+更新頻度：中／重要度：高
+
+テストを書くのはCodexでも、何を検証すべきかはあなたが決めた方が速いです。
+
+“何が残っていればOKか”（evidence/warnings/保存パス）
+
+“何を壊したらNGか”（税務ルール変更、出力スキーマ破壊）
+
+実務フロー（あなたの希望：定義→自律→レビュー）に落とすと
+ステップ1：あなたがやる（定義）
+
+docs/specs/yyyymmdd_topic.md を作る（テンプレから）
+
+docs/03_rules.md を必要なら更新（危険領域の追記）
+
+Issueを作る（本文に SPEC: を書く）
+
+ステップ2：Codexがやる（自律開発）
+
+agent:run で起動 → 実装 → tests追加 → dev_run_checks → PR作成 → Issueにリンク
+
+ステップ3：あなたがやる（レビュー）
+
+レビューはこの順で見ればOKです：
+
+SPECの合格条件を満たしているか
+
+danger zoneに触れてないか（docs/03_rules.md基準）
+
+テストが増えているか / CIが緑か
+
+出力（final.json）が説明可能か（warnings/evidence）
+
+
+使い回せる「あなたの更新ポイント」テンプレ（最小セット）
+
+あなたが毎回触るのは基本これだけで回せます：
+
+✅ docs/specs/<task>.md（毎回）
+
+✅ GitHub Issue（毎回）
+
+◻️ docs/03_rules.md（危険領域が増えたとき）
+
+◻️ docs/01_commands.md（品質コマンド変更時）
+
+◻️ INDEX.md（運用ルール変更時）

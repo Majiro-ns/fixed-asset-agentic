@@ -1,0 +1,52 @@
+cd "$env:USERPROFILE\Desktop\fixed-asset-agentic"
+codex chat
+
+
+streamlit run ui\app.py
+
+• 実装されている機能
+
+  - UI: ヘッダにタイトル＋タグライン、ステップ進行（Welcome/Input/Result）、サンプル選択or貼付→Adapter+Classifier実行、
+    結果指標（CAPITAL/EXPENSE/GUIDANCE）、GUIDANCE優先の並び替え、判定テーブル、GUIDANCE理由expander（line/description/
+    label/rationale/flags/evidence.source_textのみ表示）、次にやること導線、Opal/Final JSONは折りたたみ、final.jsonダウ
+    ンロード（UTF-8）。
+  - Backend: core.adapterで揺れるOpal JSON→固定スキーマ、core.classifierで3値判定＋flags/evidence付与、core.policyで
+    policyマージ（失敗時は空ポリシーで継続）、core.pipeline/scripts/run_pipeline.pyでAdapter→Classifier→UTF-8-SIG保存、
+    ロバストな文字コード読取（UTF-8/CP932/SJIS）。
+
+  提出目線の判定
+
+  - 要改善：デモ用ポリシーファイルが文字化け＆構文崩れで適用されず、Stop強化の勘所が伝わりにくい。UIダウンロードはUTF-8
+    で、Windows互換（UTF-8-SIG）の要件に未達。READMEに⚠絵文字が残っておりcp932環境リスク。
+
+  リスク指摘トップ5
+
+  1. policies/company_default.json が文字化け＆クオート欠落でJSONとして無効 → ポリシー適用されず「企業前提でStopを強め
+     る」価値が見せられない。
+  2. UIのダウンロードJSONはUTF-8無BOM → Windowsメモ帳で開くと文字化けリスク（要UTF-8-SIG）。
+  3. READMEに⚠が残存 → cp932環境での文字化け・表示崩れの懸念。
+  4. core/pipeline.py 冒頭の [DEBUG] print と二重定義（load_jsonの再定義）が残っており、提出物としてノイズ／品質懸念を与
+     える可能性（動作はする）。
+  5. 判定テーブルの金額列は左寄せのまま → 「金額の視認性最大化」要求に対し、右寄せや強調がないため訴求力が弱い。
+
+  最小差分で効く改善提案
+
+  1. policies/company_default.json：UTF-8で再生成し、実例になるキーワードを正しい日本語に修正（asset_add/expense_add/
+     guidance_add, thresholds.guidance_amount_jpy, regex.always_guidance）。例）「撤去」「移設」「既設」等を含める。
+  2. ui/app.py：st.download_button に渡すデータを final_text.encode("utf-8-sig") に変更し、Windows互換を明示する短い補足
+     キャプションを追加。
+  3. README.md：⚠をテキスト「要確認」に置換し、cp932でも崩れないようにする。ポリシーファイルの置き場所と適用例を1文
+     追記。
+  4. ui/app.py：判定テーブルで金額列を st.dataframe の column_config で右寄せ（column_config={"amount":
+     st.column_config.TextColumn("amount", help="JPY", width="small")} など）するか、フォーマット済み文字列に全角スペー
+     スを前置して右寄せ風に揃える。
+  5. core/pipeline.py：冒頭のデバッグprintと重複 load_json 定義を整理（既存シグネチャ維持）し、可読性を上げる。
+
+  30秒デモの正解ルート
+
+  - サイドバーで company_default を選択（修正後想定）。
+  - Step1でサンプル 04_opal.json を選択（GUIDANCEが出る例）、そのまま「判定を実行」。
+  - Step2でメトリクスとStopカードを流し見 → テーブル上部にGUIDANCEが並ぶことを示す。
+  - すぐ下の expander「要確認（GUIDANCE）の理由」をクリック → line/description/flags/evidence.source_text を一目で確認。
+  - amount列が JPY 1,234,567 形式で読めることを指摘。
+  - 必要なら折りたたみのFinal JSONを開き、ダウンロードボタンでUTF-8-SIG保存を確認（修正後）。
