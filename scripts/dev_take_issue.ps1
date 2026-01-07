@@ -10,13 +10,18 @@ Set-Location $repoRoot
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "git is required"
 }
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    throw "gh CLI is required (https://cli.github.com/)"
-}
-try {
-    gh auth status | Out-Null
-} catch {
-    throw "gh CLI is not authenticated. Run 'gh auth login' before scripts/dev_take_issue.ps1."
+
+# gh は「あるなら使う」。無ければPR作成/チェック監視をスキップして成功終了できるようにする
+$hasGh = [bool](Get-Command gh -ErrorAction SilentlyContinue)
+$ghAuthed = $false
+if ($hasGh) {
+    try {
+        gh auth status | Out-Null
+        $ghAuthed = $true
+    } catch {
+        # CI等で未認証でも「実装・コミット・push」までは行えるため、PR関連のみスキップ可能にする
+        $ghAuthed = $false
+    }
 }
 
 $branch = "ai/issue-$IssueNumber"
@@ -25,7 +30,7 @@ $CommitMessage = if ($CommitMessage) { $CommitMessage } else { "chore: close #$I
 $currentBranch = (git rev-parse --abbrev-ref HEAD).Trim()
 $dirty = git status --porcelain
 
-Write-Host "[dev_take_issue] target branch:" $branch
+Write-Host "[dev_take_issue] target branch: $branch"
 
 git fetch origin main
 
@@ -46,7 +51,8 @@ Write-Host "[dev_take_issue] running quality gate..."
 
 $pending = git status --porcelain
 if (-not $pending) {
-    throw "No changes to commit. Apply work for issue $IssueNumber, then rerun."
+    Write-Host "[dev_take_issue] NO_CHANGES: nothing to commit for issue $IssueNumber. Exiting 0."
+    exit 0
 }
 
 Write-Host "[dev_take_issue] staging and committing..."
@@ -55,6 +61,16 @@ git commit -m $CommitMessage
 
 Write-Host "[dev_take_issue] pushing to origin..."
 git push -u origin $branch
+
+# PR作成は gh が使える場合のみ（CI/ローカル差分に耐える）
+if (-not $hasGh) {
+    Write-Host "[dev_take_issue] GH_MISSING: gh CLI not found. Skipping PR creation. Exiting 0."
+    exit 0
+}
+if (-not $ghAuthed) {
+    Write-Host "[dev_take_issue] GH_NOT_AUTHED: gh CLI not authenticated. Skipping PR creation. Exiting 0."
+    exit 0
+}
 
 Write-Host "[dev_take_issue] creating PR..."
 $prTitle = "Issue #$IssueNumber"
