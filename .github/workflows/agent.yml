@@ -4,9 +4,14 @@ on:
   issues:
     types: [labeled]
   workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to run (required for manual run)"
+        required: true
+        type: string
 
 concurrency:
-  group: agent-run-${{ github.event.issue.number || github.run_id }}
+  group: agent-run-${{ github.event.issue.number || github.event.inputs.issue_number || github.run_id }}
   cancel-in-progress: false
 
 permissions:
@@ -18,11 +23,33 @@ jobs:
   run-agent:
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'agent:run') }}
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # --- Issue番号を必ず確定させて表示する（ここが一番重要） ---
+      - name: Resolve issue number
+        id: issue
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            n="${{ github.event.issue.number }}"
+          else
+            n="${{ github.event.inputs.issue_number }}"
+          fi
+
+          if [ -z "$n" ]; then
+            echo "ERROR: issue number is empty. For manual run, set workflow_dispatch input 'issue_number'." >&2
+            exit 1
+          fi
+
+          echo "issue_number=$n" >> "$GITHUB_OUTPUT"
+          echo "[agent] issue_number=$n"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -48,21 +75,22 @@ jobs:
         id: agent
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.inputs.issue_number || '' }}
-          ISSUE_LABELS: ${{ toJson(github.event.issue.labels) }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
+          ISSUE_LABELS_JSON: ${{ toJson(github.event.issue.labels) }}
         run: |
-          python tools/agent_run.py --issue $ISSUE_NUMBER
+          python tools/agent_run.py --issue "$ISSUE_NUMBER"
 
       - name: Run quality gate
         shell: pwsh
         run: |
           ./scripts/dev_run_checks.ps1 -SkipInstall
 
-      - name: Create branch, commit, push, PR
+      # --- 変更があるときだけPRを作る / 変更なしは成功扱いでコメント ---
+      - name: Create PR if changes exist
         id: pr
         uses: actions/github-script@v7
         env:
-          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.inputs.issue_number || '' }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -71,18 +99,31 @@ jobs:
               core.setFailed("ISSUE_NUMBER missing");
               return;
             }
+
+            const { exec } = require("@actions/exec");
+
+            // git status --porcelain を確実に取る
+            let statusOut = "";
+            await exec("git", ["status", "--porcelain"], {
+              listeners: {
+                stdout: (data) => { statusOut += data.toString(); },
+                stderr: (data) => { statusOut += data.toString(); },
+              },
+            });
+
+            if (!statusOut.trim()) {
+              core.setOutput("no_changes", "true");
+              core.info("NO_CHANGES: nothing to commit; skipping PR creation.");
+              return;
+            }
+
             const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 12);
             const branch = `agent/issue-${issueNumber}-${ts}`;
 
-            await exec.exec("git", ["checkout", "-B", branch]);
-            await exec.exec("git", ["status", "--short"]).then(output => {
-              if (!output.trim()) {
-                core.setFailed("No changes to commit; nothing to PR.");
-              }
-            });
-            await exec.exec("git", ["add", "."]);
-            await exec.exec("git", ["commit", "-m", `chore: agent for #${issueNumber}`]);
-            await exec.exec("git", ["push", "-u", "origin", branch]);
+            await exec("git", ["checkout", "-B", branch]);
+            await exec("git", ["add", "."]);
+            await exec("git", ["commit", "-m", `chore: agent for #${issueNumber}`]);
+            await exec("git", ["push", "-u", "origin", branch]);
 
             const { data: pr } = await github.rest.pulls.create({
               owner: context.repo.owner,
@@ -92,47 +133,70 @@ jobs:
               title: `Agent run for #${issueNumber}`,
               body: `Automated agent run for #${issueNumber}.`
             });
+
             core.setOutput("pr_url", pr.html_url);
 
-      - name: Comment PR link on issue
-        if: ${{ steps.pr.outputs.pr_url && github.event.issue.number }}
+      - name: Comment result on issue (label runs only)
+        if: ${{ github.event.issue.number }}
         uses: actions/github-script@v7
+        env:
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          NO_CHANGES: ${{ steps.pr.outputs.no_changes }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const prUrl = core.getInput("pr_url");
+            const issueNumber = process.env.ISSUE_NUMBER;
+            const prUrl = process.env.PR_URL || "";
+            const noChanges = (process.env.NO_CHANGES || "") === "true";
+
+            let body = "";
+            if (noChanges) {
+              body = "Agent run finished: **no code changes detected** (no PR created).";
+            } else if (prUrl) {
+              body = `Agent run created PR: ${prUrl}`;
+            } else {
+              body = "Agent run finished, but PR URL was not produced. Please check workflow logs.";
+            }
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `Agent run created PR: ${prUrl}`
+              issue_number: Number(issueNumber),
+              body
             });
 
-      - name: Remove agent label
+      - name: Remove agent label (label runs only)
         if: ${{ github.event.issue.number }}
         uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
             const labels = (context.payload.issue.labels || []).map(l => l.name);
             if (labels.includes("agent:run")) {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: issueNumber,
                 name: "agent:run"
               }).catch(() => {});
             }
 
-      - name: Comment failure on issue
+      - name: Comment failure on issue (label runs only)
         if: ${{ failure() && github.event.issue.number }}
         uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: issueNumber,
               body: `Agent run failed. Please check workflow logs.`
             });
