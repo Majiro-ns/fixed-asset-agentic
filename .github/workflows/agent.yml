@@ -100,11 +100,9 @@ jobs:
               return;
             }
 
-            const { exec } = require("@actions/exec");
-
             // git status --porcelain を確実に取る
             let statusOut = "";
-            await exec("git", ["status", "--porcelain"], {
+            await exec.exec("git", ["status", "--porcelain"]); {
               listeners: {
                 stdout: (data) => { statusOut += data.toString(); },
                 stderr: (data) => { statusOut += data.toString(); },
