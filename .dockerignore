@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data and artifacts
+data/results/
+data/uploads/
+*.pdf
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests
+tests/
+.pytest_cache/
+
+# Scripts (not needed in container)
+scripts/
+
+# UI (not needed for API)
+ui/
+requirements-ui.txt
+
+# Other
+脳みそ.txt
+起動コマンド.txt
+INDEX.md

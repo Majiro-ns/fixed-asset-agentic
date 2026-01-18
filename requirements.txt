@@ -1,3 +1,6 @@
 ﻿pytest
 streamlit
 PyMuPDF
+fastapi
+uvicorn
+gunicorn

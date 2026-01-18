@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import re
 from typing import Any, Dict, List, Optional
 
@@ -5,43 +6,43 @@ from core import schema
 
 
 CAPITAL_KEYWORDS = [
-    "�X�V",
-    "�V��",
-    "����",
-    "�ݒu",
-    "�w��",
-    "����",
-    "�\\�z",
-    "����",
-    "����",
+    "更新",
+    "新設",
+    "設置",
+    "増設",
+    "購入",
+    "導入",
+    "構築",
+    "整備",
+    "改修",
 ]
 
 EXPENSE_KEYWORDS = [
-    "�ێ�",
-    "�_��",
-    "���|",
-    "����",
-    "�C��",
-    "����",
-    "�����e",
-    "�Z��",
+    "保守",
+    "点検",
+    "修理",
+    "調整",
+    "清掃",
+    "清拭",
+    "消耗品",
+    "雑費",
 ]
 
 MIXED_KEYWORDS = [
-    "�P��",
-    "���",
-    "�ڐ�",
-    "�p��",
-    "����",
+    "一式",
+    "撤去",
+    "移設",
+    "既設",
+    "更新",
 ]
 
 LABEL_JA = {
-    schema.CAPITAL_LIKE: "���Y���",
-    schema.EXPENSE_LIKE: "��p���",
-    schema.GUIDANCE: "�v�m�F�i�f�肵�܂���j",
+    schema.CAPITAL_LIKE: "資産寄り",
+    schema.EXPENSE_LIKE: "費用寄り",
+    schema.GUIDANCE: "要確認（判定しません）",
 }
 
-GUIDANCE_RATIONALE = "���f�������\\�������邽�ߒf�肵�܂���"
+GUIDANCE_RATIONALE = "判断が割れる可能性があるため判定しません"
 
 
 def _find_keywords(text: str, keywords: List[str]) -> List[str]:
@@ -128,9 +129,9 @@ def classify_line_item(item: Dict[str, Any], policy: Optional[Dict[str, Any]] = 
     label_ja = LABEL_JA[classification]
 
     if classification == schema.CAPITAL_LIKE:
-        rationale_ja = f"�i�ڂɁu{cap_hits[0]}�v���܂܂�邽�ߎ��Y���Ɣ���"
+        rationale_ja = f"明細に「{cap_hits[0]}」が含まれるため資産寄りと判定"
     elif classification == schema.EXPENSE_LIKE:
-        rationale_ja = f"�i�ڂɁu{exp_hits[0]}�v���܂܂�邽�ߔ�p���Ɣ���"
+        rationale_ja = f"明細に「{exp_hits[0]}」が含まれるため費用寄りと判定"
     else:
         rationale_ja = GUIDANCE_RATIONALE
 

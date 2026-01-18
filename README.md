@@ -351,4 +351,105 @@ Quick links:
 - See docs/00_project.md, docs/01_commands.md, docs/02_arch.md, docs/03_rules.md for context and workflows.
 - PDF: `python scripts/run_pdf.py --pdf tests/fixtures/sample_text.pdf --out data/results` (artifacts go to `data/uploads` and `data/results`)
 - UI: `streamlit run ui/app.py` then use the JSON tab or the new PDF Upload tab
+- API: `uvicorn api.main:app --reload --port 8000` (see API section below)
 - Agent (hands-off): on an Issue, add label `agent:run` to let GitHub Actions branch→run checks→push→open PR and comment back. No auto-merge; main requires PR.
+
+## API (FastAPI)
+
+### ローカル起動
+
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+### エンドポイント
+
+#### GET /healthz
+ヘルスチェック
+
+```bash
+curl http://localhost:8000/healthz
+```
+
+#### POST /classify
+Opal JSONを送信して固定資産判定を実行
+
+```bash
+curl -X POST http://localhost:8000/classify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "opal_json": {
+      "invoice_date": "2024-01-01",
+      "vendor": "ACME Corp",
+      "line_items": [
+        {"item_description": "server install", "amount": 5000, "quantity": 1}
+      ]
+    },
+    "policy_path": "policies/company_default.json"
+  }'
+```
+
+`policy_path` が指定されない場合、デフォルトで `policies/company_default.json` が使用されます。
+
+レスポンス形式:
+```json
+{
+  "decision": "CAPITAL_LIKE|EXPENSE_LIKE|GUIDANCE",
+  "reasons": ["判定理由のリスト"],
+  "evidence": [{"line_no": 1, "description": "...", "source_text": "...", ...}],
+  "questions": ["GUIDANCE項目に対する確認質問"],
+  "metadata": {"version": "v1.0", "document_info": {...}, "totals": {...}, ...}
+}
+```
+
+### Docker ビルド・実行
+
+```bash
+# ビルド
+docker build -t fixed-asset-api .
+
+# ローカル実行（ポート8080で起動）
+docker run -p 8080:8080 -e PORT=8080 fixed-asset-api
+```
+
+### Cloud Run デプロイ
+
+**前提条件:** GCPプロジェクトにBillingアカウントをリンクしてください。
+
+#### デプロイ手順（最短）
+
+```bash
+# 1. プロジェクト設定
+gcloud config set project YOUR_PROJECT_ID
+
+# 2. 必要APIを有効化
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com aiplatform.googleapis.com
+
+# 3. Cloud Runにデプロイ
+gcloud run deploy fixed-asset-agentic-api \
+  --source . \
+  --region asia-northeast1 \
+  --allow-unauthenticated
+
+# 4. デプロイ後の疎通確認
+curl.exe -s https://SERVICE_URL/healthz
+```
+
+#### 方法2: 事前ビルドしたイメージからデプロイ
+
+#### 方法2: 事前ビルドしたイメージからデプロイ
+
+```bash
+# GCR/Artifact Registryにプッシュ
+docker tag fixed-asset-api gcr.io/YOUR_PROJECT_ID/fixed-asset-api
+docker push gcr.io/YOUR_PROJECT_ID/fixed-asset-api
+
+# Cloud Runにデプロイ
+gcloud run deploy fixed-asset-api \
+  --image gcr.io/YOUR_PROJECT_ID/fixed-asset-api \
+  --platform managed \
+  --region asia-northeast1 \
+  --allow-unauthenticated
+```
+
+Cloud Runは自動的に `PORT` 環境変数を設定します。コンテナ内のアプリケーションは `0.0.0.0:$PORT` でリッスンします。
