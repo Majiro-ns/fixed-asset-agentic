@@ -13,5 +13,8 @@ data/results/*.json
 *_メモ.txt
 # runtime data
 data/
+# but allow golden test set
+!data/golden/
+!data/golden/**/*.json
 
 openapi.json
