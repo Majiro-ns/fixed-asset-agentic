@@ -1,0 +1,9 @@
+{
+  "opal_json": {
+    "invoice_date": "2024-01-01",
+    "vendor": "ACME Corp",
+    "line_items": [
+      {"item_description": "サーバー新設工事", "amount": 500000, "quantity": 1}
+    ]
+  }
+}

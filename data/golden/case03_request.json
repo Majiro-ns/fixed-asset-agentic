@@ -1,0 +1,9 @@
+{
+  "opal_json": {
+    "invoice_date": "2024-01-03",
+    "vendor": "Big Corp",
+    "line_items": [
+      {"item_description": "不明な高額設備", "amount": 2000000, "quantity": 1}
+    ]
+  }
+}

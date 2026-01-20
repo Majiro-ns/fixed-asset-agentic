@@ -1,0 +1,9 @@
+{
+  "opal_json": {
+    "invoice_date": "2024-01-04",
+    "vendor": "Construction Co",
+    "line_items": [
+      {"item_description": "既存設備の撤去工事", "amount": 300000, "quantity": 1}
+    ]
+  }
+}

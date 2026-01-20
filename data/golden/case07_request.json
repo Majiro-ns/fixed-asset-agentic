@@ -1,0 +1,9 @@
+{
+  "opal_json": {
+    "invoice_date": "2024-01-07",
+    "vendor": "Vendor X",
+    "line_items": [
+      {"item_description": "何かの一式", "amount": 500000, "quantity": 1}
+    ]
+  }
+}

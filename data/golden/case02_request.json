@@ -1,0 +1,9 @@
+{
+  "opal_json": {
+    "invoice_date": "2024-01-02",
+    "vendor": "Tech Services",
+    "line_items": [
+      {"item_description": "定期保守点検", "amount": 50000, "quantity": 1}
+    ]
+  }
+}

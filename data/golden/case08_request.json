@@ -1,0 +1,9 @@
+{
+  "opal_json": {
+    "invoice_date": "2024-01-08",
+    "vendor": "System Corp",
+    "line_items": [
+      {"item_description": "サーバー増設", "amount": 600000, "quantity": 1}
+    ]
+  }
+}
