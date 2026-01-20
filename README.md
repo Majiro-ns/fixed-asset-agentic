@@ -364,15 +364,17 @@ uvicorn api.main:app --reload --port 8000
 
 ### エンドポイント
 
-#### GET /healthz
-ヘルスチェック
+#### GET /health
+ヘルスチェックエンドポイント（Cloud Run公式）。`/healthz`はCloud Runで予約パスのため使用不可。
 
 ```bash
-curl http://localhost:8000/healthz
+curl http://localhost:8000/health
 ```
 
+レスポンス: `{"ok": true}`
+
 #### POST /classify
-Opal JSONを送信して固定資産判定を実行
+Opal JSONを送信して固定資産判定を実行。WIN+1: オプショナルな`answers`フィールドでagenticループをサポート。
 
 ```bash
 curl -X POST http://localhost:8000/classify \
@@ -385,22 +387,39 @@ curl -X POST http://localhost:8000/classify \
         {"item_description": "server install", "amount": 5000, "quantity": 1}
       ]
     },
-    "policy_path": "policies/company_default.json"
+    "policy_path": "policies/company_default.json",
+    "answers": {"field1": "value1"}
   }'
 ```
 
 `policy_path` が指定されない場合、デフォルトで `policies/company_default.json` が使用されます。
+`answers` はオプショナルで、GUIDANCE判定時に不足情報を補完して再分類を試みます。
 
 レスポンス形式:
 ```json
 {
   "decision": "CAPITAL_LIKE|EXPENSE_LIKE|GUIDANCE",
   "reasons": ["判定理由のリスト"],
-  "evidence": [{"line_no": 1, "description": "...", "source_text": "...", ...}],
+  "evidence": [{"line_no": 1, "description": "...", "source_text": "...", "confidence": 0.8, ...}],
   "questions": ["GUIDANCE項目に対する確認質問"],
-  "metadata": {"version": "v1.0", "document_info": {...}, "totals": {...}, ...}
+  "metadata": {"version": "v1.0", "document_info": {...}, "totals": {...}, ...},
+  "is_valid_document": true,
+  "confidence": 0.8,
+  "error_code": null,
+  "trace": ["extract", "parse", "rules", "format"],
+  "missing_fields": ["field1", "field2"],
+  "why_missing_matters": ["Missing information prevents classification"]
 }
 ```
+
+WIN+1追加フィールド:
+- `is_valid_document`: ドキュメントが有効かどうか
+- `confidence`: 判定の信頼度（0.0-1.0）
+- `error_code`: エラーコード（エラー時のみ）
+- `trace`: 実行ステップのトレース
+- `missing_fields`: GUIDANCE時に不足しているフィールドのリスト
+- `why_missing_matters`: 不足情報が判定に与える影響の説明
+- `evidence[].confidence`: 各エビデンス項目の信頼度（デフォルト0.8）
 
 ### Docker ビルド・実行
 
@@ -432,7 +451,10 @@ gcloud run deploy fixed-asset-agentic-api \
   --allow-unauthenticated
 
 # 4. デプロイ後の疎通確認
-curl.exe -s https://SERVICE_URL/healthz
+curl.exe -s https://SERVICE_URL/health
+
+# または PowerShell smoke script を使用
+.\scripts\smoke_cloudrun.ps1
 ```
 
 #### 方法2: 事前ビルドしたイメージからデプロイ
@@ -453,3 +475,43 @@ gcloud run deploy fixed-asset-api \
 ```
 
 Cloud Runは自動的に `PORT` 環境変数を設定します。コンテナ内のアプリケーションは `0.0.0.0:$PORT` でリッスンします。
+
+## Evaluation
+
+### Golden Set Evaluation
+
+評価用のゴールデンセット（10ケース）が `data/golden/` に含まれています。
+各ケースは `caseXX_request.json` と `caseXX_expected.json` のペアで構成されています。
+
+評価スクリプトを実行:
+
+```bash
+python scripts/eval_golden.py
+```
+
+出力例:
+```
+============================================================
+Golden Set Evaluation
+============================================================
+
+PASS: Case 01: PASS
+PASS: Case 02: PASS
+...
+PASS: Case 10: PASS
+
+============================================================
+Summary
+============================================================
+Total cases: 10
+Passed: 10
+Failed: 0
+Accuracy: 100.0%
+
+All tests passed!
+```
+
+### Current Score
+
+- **Golden Set Accuracy: 100.0%** (10/10 cases passed)
+- Last evaluated: 2026-01-20

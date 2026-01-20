@@ -13,3 +13,5 @@ data/results/*.json
 *_メモ.txt
 # runtime data
 data/
+
+openapi.json

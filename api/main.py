@@ -17,6 +17,7 @@ app = FastAPI(title="Fixed Asset Classification API", version="1.0.0")
 class ClassifyRequest(BaseModel):
     opal_json: Dict[str, Any]
     policy_path: Optional[str] = None
+    answers: Optional[Dict[str, str]] = None
 
 
 class ClassifyResponse(BaseModel):
@@ -25,9 +26,16 @@ class ClassifyResponse(BaseModel):
     evidence: List[Dict[str, Any]]
     questions: List[str]
     metadata: Dict[str, Any]
+    # WIN+1 additive fields
+    is_valid_document: bool
+    confidence: float
+    error_code: Optional[str] = None
+    trace: List[str]
+    missing_fields: List[str]
+    why_missing_matters: List[str]
 
 
-def _format_classify_response(doc: Dict[str, Any]) -> ClassifyResponse:
+def _format_classify_response(doc: Dict[str, Any], trace_steps: Optional[List[str]] = None) -> ClassifyResponse:
     """
     Convert pipeline output to API response format.
     Maps existing classifier/pipeline outputs to decision/reasons/evidence/questions/metadata.
@@ -76,6 +84,7 @@ def _format_classify_response(doc: Dict[str, Any]) -> ClassifyResponse:
                     "description": item.get("description"),
                     "source_text": ev.get("source_text", ""),
                     "position_hint": ev.get("position_hint", ""),
+                    "confidence": ev.get("confidence", 0.8),  # WIN+1: default 0.8
                 }
                 # Include snippets if available
                 snippets = ev.get("snippets")
@@ -108,19 +117,57 @@ def _format_classify_response(doc: Dict[str, Any]) -> ClassifyResponse:
         },
     }
     
+    # WIN+1: additive fields
+    is_valid_document = bool(doc.get("document_info")) and len(line_items) > 0
+    # Calculate confidence: average of evidence confidences, default to 0.7 if no evidence
+    confidences = [e.get("confidence", 0.8) for e in evidence]
+    confidence = sum(confidences) / len(confidences) if confidences else 0.7
+    
+    # missing_fields and why_missing_matters: only for GUIDANCE
+    missing_fields: List[str] = []
+    why_missing_matters: List[str] = []
+    if decision == "GUIDANCE":
+        # Extract missing field hints from flags and questions
+        for item in guidance_items:
+            flags = item.get("flags", [])
+            desc = item.get("description", "")
+            # Heuristic: flags often indicate missing info
+            if flags:
+                missing_fields.extend([f"{desc}:{f}" for f in flags if isinstance(f, str)])
+                why_missing_matters.append(f"Missing information in '{desc}' prevents automatic classification")
+        # Deduplicate
+        missing_fields = list(set(missing_fields))
+        why_missing_matters = list(set(why_missing_matters))
+    
+    # trace: execution steps
+    if trace_steps is None:
+        trace_steps = ["extract", "parse", "rules", "format"]
+    
     return ClassifyResponse(
         decision=decision,
         reasons=reasons,
         evidence=evidence,
         questions=questions,
         metadata=metadata,
+        is_valid_document=is_valid_document,
+        confidence=confidence,
+        error_code=None,
+        trace=trace_steps,
+        missing_fields=missing_fields,
+        why_missing_matters=why_missing_matters,
     )
 
 
 @app.get("/healthz")
+@app.get("/health")
 async def healthz() -> Dict[str, bool]:
-    """Health check endpoint."""
+    """Health check endpoint. Cloud Run reserves /healthz, so /health also works."""
     return {"ok": True}
+
+@app.get("/")
+async def root() -> Dict[str, str]:
+    """Root endpoint."""
+    return {"message": "Fixed Asset Classification API", "version": "1.0.0"}
 
 
 @app.post("/classify", response_model=ClassifyResponse)
@@ -129,13 +176,16 @@ async def classify(request: ClassifyRequest) -> ClassifyResponse:
     Classify fixed asset items from Opal JSON.
     
     Uses existing core.adapter and core.classifier functions.
+    WIN+1: Supports agentic loop with answers for GUIDANCE cases.
     """
     try:
+        trace_steps = ["extract"]
         # Use existing pipeline functions
         opal_json = request.opal_json
         
         # Normalize using adapter
         normalized = adapt_opal_to_v1(opal_json)
+        trace_steps.append("parse")
         
         # Load policy (default to company_default.json if not provided)
         policy_path = request.policy_path
@@ -148,9 +198,34 @@ async def classify(request: ClassifyRequest) -> ClassifyResponse:
         
         # Classify using classifier
         classified = classify_document(normalized, policy)
+        trace_steps.append("rules")
         
-        # Format response
-        return _format_classify_response(classified)
+        # Format initial response
+        initial_response = _format_classify_response(classified, trace_steps=trace_steps.copy())
+        
+        # WIN+1: Minimal agentic loop - if GUIDANCE and answers provided, try rerun
+        if initial_response.decision == "GUIDANCE" and request.answers and initial_response.missing_fields:
+            # Check if answers cover missing fields
+            answered_fields = set(request.answers.keys())
+            missing_set = set(initial_response.missing_fields)
+            # Simple heuristic: if answers match any missing field pattern
+            if answered_fields and any(k in str(mf).lower() for mf in missing_set for k in answered_fields):
+                trace_steps.append("rerun_with_answers")
+                # Apply answers to opal_json (merge into line items or document_info)
+                enhanced_opal = opal_json.copy()
+                # Simple merge: add answers to document_info context
+                if "document_info" not in enhanced_opal:
+                    enhanced_opal["document_info"] = {}
+                enhanced_opal["document_info"]["user_answers"] = request.answers
+                
+                # Rerun classification
+                enhanced_normalized = adapt_opal_to_v1(enhanced_opal)
+                enhanced_classified = classify_document(enhanced_normalized, policy)
+                trace_steps.append("format")
+                return _format_classify_response(enhanced_classified, trace_steps=trace_steps)
+        
+        trace_steps.append("format")
+        return _format_classify_response(classified, trace_steps=trace_steps)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")

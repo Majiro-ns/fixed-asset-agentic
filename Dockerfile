@@ -12,5 +12,6 @@ COPY . .
 # Expose port (Cloud Run will set PORT env var)
 ENV PORT=8080
 
-# Use gunicorn with uvicorn workers
-CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class uvicorn.workers.UvicornWorker --timeout 0 api.main:app
+# Use uvicorn directly (simpler for Cloud Run)
+# Cloud Run sets PORT env var automatically
+CMD ["sh", "-c", "exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
