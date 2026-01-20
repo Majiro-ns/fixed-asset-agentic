@@ -3,4 +3,4 @@ streamlit
 PyMuPDF
 fastapi
 uvicorn
-gunicorn
+gunicornrequests
