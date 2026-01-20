@@ -16,5 +16,8 @@ data/
 # but allow golden test set
 !data/golden/
 !data/golden/**/*.json
+# and allow demo cases
+!data/demo/
+!data/demo/**/*.json
 
 openapi.json
