@@ -1,0 +1,7 @@
+{
+  "invoice_date": "2024-01-05",
+  "vendor": "IT Solutions",
+  "line_items": [
+    {"item_description": "PC設置", "amount": 200000, "quantity": 5}
+  ]
+}
