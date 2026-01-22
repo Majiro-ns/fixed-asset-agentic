@@ -4,7 +4,14 @@
 Demonstrate the agentic fixed-asset classification service with evidence-first outputs and GUIDANCE Q&A loop.
 
 ## Setup (10 seconds)
-- Open Streamlit UI: `streamlit run ui/app_minimal.py`
+- **Launch UI (canonical):**
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo_ui.ps1
+  ```
+- **Manual fallback (if demo_ui.ps1 fails):**
+  ```bash
+  streamlit run ui/app_minimal.py
+  ```
 - Show Cloud Run URL in sidebar: `https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app`
 - Mention: "Rule-first, evidence-first classification with agentic assistance for ambiguous cases"
 
