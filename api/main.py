@@ -1,13 +1,34 @@
 # -*- coding: utf-8 -*-
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from core.adapter import adapt_opal_to_v1
 from core.classifier import classify_document
+from core.pdf_extract import extract_pdf, extraction_to_opal
 from core.policy import load_policy
+
+# Optional: Vertex AI Search integration (feature-flagged)
+try:
+    from api.vertex_search import get_citations_for_guidance
+    VERTEX_SEARCH_AVAILABLE = True
+except ImportError:
+    VERTEX_SEARCH_AVAILABLE = False
+    def get_citations_for_guidance(*args, **kwargs):
+        return []
+
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    """Check environment variable for boolean flag."""
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return str(val).strip().lower() in {"1", "true", "yes", "y", "on"}
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -33,9 +54,15 @@ class ClassifyResponse(BaseModel):
     trace: List[str]
     missing_fields: List[str]
     why_missing_matters: List[str]
+    # Google Cloud: Legal citations (Vertex AI Search)
+    citations: List[Dict[str, Any]] = []
 
 
-def _format_classify_response(doc: Dict[str, Any], trace_steps: Optional[List[str]] = None) -> ClassifyResponse:
+def _format_classify_response(
+    doc: Dict[str, Any],
+    trace_steps: Optional[List[str]] = None,
+    citations: Optional[List[Dict[str, Any]]] = None,
+) -> ClassifyResponse:
     """
     Convert pipeline output to API response format.
     Maps existing classifier/pipeline outputs to decision/reasons/evidence/questions/metadata.
@@ -143,6 +170,10 @@ def _format_classify_response(doc: Dict[str, Any], trace_steps: Optional[List[st
     if trace_steps is None:
         trace_steps = ["extract", "parse", "rules", "format"]
     
+    # citations: legal/regulation references (from Vertex AI Search if enabled)
+    if citations is None:
+        citations = []
+    
     return ClassifyResponse(
         decision=decision,
         reasons=reasons,
@@ -155,6 +186,7 @@ def _format_classify_response(doc: Dict[str, Any], trace_steps: Optional[List[st
         trace=trace_steps,
         missing_fields=missing_fields,
         why_missing_matters=why_missing_matters,
+        citations=citations,
     )
 
 
@@ -203,6 +235,29 @@ async def classify(request: ClassifyRequest) -> ClassifyResponse:
         # Format initial response
         initial_response = _format_classify_response(classified, trace_steps=trace_steps.copy())
         
+        # Google Cloud: Vertex AI Search for legal citations (if GUIDANCE and feature enabled)
+        citations: List[Dict[str, Any]] = []
+        if initial_response.decision == "GUIDANCE" and VERTEX_SEARCH_AVAILABLE:
+            # Collect context from guidance items
+            guidance_items = [item for item in classified.get("line_items", []) 
+                            if isinstance(item, dict) and item.get("classification") == "GUIDANCE"]
+            if guidance_items:
+                # Use first guidance item for search context
+                item = guidance_items[0]
+                citations = get_citations_for_guidance(
+                    description=item.get("description", ""),
+                    missing_fields=initial_response.missing_fields,
+                    flags=item.get("flags", []),
+                )
+                if citations:
+                    trace_steps.append("law_search")
+                    # Update response with citations
+                    initial_response = _format_classify_response(
+                        classified,
+                        trace_steps=trace_steps.copy(),
+                        citations=citations,
+                    )
+        
         # WIN+1: Minimal agentic loop - if GUIDANCE and answers provided, try rerun
         if initial_response.decision == "GUIDANCE" and request.answers and initial_response.missing_fields:
             # Check if answers cover missing fields
@@ -222,10 +277,117 @@ async def classify(request: ClassifyRequest) -> ClassifyResponse:
                 enhanced_normalized = adapt_opal_to_v1(enhanced_opal)
                 enhanced_classified = classify_document(enhanced_normalized, policy)
                 trace_steps.append("format")
-                return _format_classify_response(enhanced_classified, trace_steps=trace_steps)
+                # Preserve citations in rerun response
+                return _format_classify_response(enhanced_classified, trace_steps=trace_steps, citations=citations)
         
         trace_steps.append("format")
-        return _format_classify_response(classified, trace_steps=trace_steps)
+        return initial_response
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
+
+
+@app.post("/classify_pdf", response_model=ClassifyResponse)
+async def classify_pdf(
+    file: UploadFile = File(...),
+    policy_path: Optional[str] = None,
+) -> ClassifyResponse:
+    """
+    Classify fixed asset items from uploaded PDF file.
+    
+    Feature-flagged: Only active when PDF_CLASSIFY_ENABLED=1.
+    When disabled, returns 400 with clear message (no crash).
+    """
+    # Feature flag check
+    if not _bool_env("PDF_CLASSIFY_ENABLED", False):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "PDF_CLASSIFY_DISABLED",
+                "message": "PDF classification is disabled on this server",
+                "how_to_enable": "Set PDF_CLASSIFY_ENABLED=1 on server",
+                "fallback": "Use POST /classify with Opal JSON instead",
+            },
+        )
+    
+    try:
+        trace_steps = ["pdf_upload"]
+        
+        # Save uploaded PDF to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            tmp_path = Path(tmp_file.name)
+            content = await file.read()
+            tmp_path.write_bytes(content)
+        
+        try:
+            # Extract PDF using core functions (core/* not modified, only imported)
+            extraction = extract_pdf(tmp_path)
+            trace_steps.append("extract")
+            
+            # Convert extraction to Opal-like format
+            opal_like = extraction_to_opal(extraction)
+            trace_steps.append("extraction_to_opal")
+            
+            # Normalize using adapter
+            normalized = adapt_opal_to_v1(opal_like)
+            trace_steps.append("parse")
+            
+            # Load policy
+            if not policy_path:
+                default_policy = PROJECT_ROOT / "policies" / "company_default.json"
+                if default_policy.exists():
+                    policy_path = str(default_policy)
+            
+            policy = load_policy(policy_path)
+            
+            # Classify
+            classified = classify_document(normalized, policy)
+            trace_steps.append("rules")
+            
+            # Add warnings from extraction
+            warnings = extraction.get("meta", {}).get("warnings", [])
+            if warnings:
+                if "warnings" not in classified:
+                    classified["warnings"] = []
+                classified["warnings"].extend(warnings)
+            
+            # Format response (same as /classify)
+            initial_response = _format_classify_response(classified, trace_steps=trace_steps.copy())
+            
+            # Vertex AI Search citations (if enabled, same as /classify)
+            citations: List[Dict[str, Any]] = []
+            if initial_response.decision == "GUIDANCE" and VERTEX_SEARCH_AVAILABLE:
+                guidance_items = [item for item in classified.get("line_items", []) 
+                                if isinstance(item, dict) and item.get("classification") == "GUIDANCE"]
+                if guidance_items:
+                    item = guidance_items[0]
+                    citations = get_citations_for_guidance(
+                        description=item.get("description", ""),
+                        missing_fields=initial_response.missing_fields,
+                        flags=item.get("flags", []),
+                    )
+                    if citations:
+                        trace_steps.append("law_search")
+                        initial_response = _format_classify_response(
+                            classified,
+                            trace_steps=trace_steps.copy(),
+                            citations=citations,
+                        )
+            
+            trace_steps.append("format")
+            return _format_classify_response(classified, trace_steps=trace_steps, citations=citations)
+        
+        finally:
+            # Clean up temporary file
+            if tmp_path.exists():
+                tmp_path.unlink()
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "PDF_CLASSIFY_ERROR",
+                "message": f"PDF classification failed: {str(e)}",
+                "how_to_enable": None,
+            },
+        )

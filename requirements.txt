@@ -1,6 +1,11 @@
-﻿pytest
+pytest
 streamlit
 PyMuPDF
 fastapi
+python-multipart
 uvicorn
-gunicornrequests
+gunicorn
+requests
+# Optional: Google Cloud Discovery Engine (for legal citations)
+# Install only if VERTEX_SEARCH_ENABLED=1 is set:
+# google-cloud-discoveryengine>=0.11.0
