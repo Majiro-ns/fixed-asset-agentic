@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.py[cod]
 *.pyo
 *.pyd
@@ -11,6 +11,7 @@ data/results/*.json
 *.log
 *_memo.txt
 *_メモ.txt
+脳みそ.txt
 # runtime data
 data/
 # but allow golden test set
