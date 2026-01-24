@@ -1,7 +1,14 @@
 # Fixed Asset Classification Demo UI Launcher
+# Canonical launcher for hackathon demo (ONLY use this script to launch UI).
 # Launches Streamlit UI from repo root with guardrails.
 
 $ErrorActionPreference = "Stop"
+
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Fixed Asset Classification Demo" -ForegroundColor Cyan
+Write-Host "Canonical UI Launcher" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
 
 # Ensure we're in the repo root
 $repoRoot = git rev-parse --show-toplevel 2>$null

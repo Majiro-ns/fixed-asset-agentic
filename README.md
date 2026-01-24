@@ -1,6 +1,85 @@
-﻿見積書 固定資産判定
+見積書 固定資産判定
 
 ― Opal抽出 × Agentic判定（Stop設計）
+
+## ハッカソン提出要件への準拠
+
+本プロジェクトは、**第4回 Agentic AI Hackathon with Google Cloud** の提出要件を満たすため、以下の方針で実装されています。
+
+**詳細は [規約準拠チェックリスト](docs/COMPLIANCE_CHECKLIST.md) を参照してください。**
+
+### 規約準拠の宣言
+
+- **主要技術**: Google Cloud AI（Vertex AI Search / Discovery Engine）を主要技術として使用
+- **提出物要件**: コード、説明テキスト＆構成図、デモ動画のすべてを提供
+- **デプロイ**: Cloud Run上で動作する公開URLを提供
+
+### 提出物詳細
+
+本プロジェクトは、以下の提出物を提供します：
+
+1. **コード**
+   - GitHubリポジトリ: 本リポジトリ（`fixed-asset-agentic-repo`）
+   - 主要コンポーネント:
+     - FastAPI（`api/main.py`）: Cloud Run上で動作する分類API
+     - Streamlit UI（`ui/app_minimal.py`）: デモ用Webインターフェース
+     - コアロジック（`core/`）: 分類・正規化・ポリシー適用
+     - Vertex AI Search統合（`api/vertex_search.py`）: 法令エビデンス検索（feature-flagged）
+
+2. **説明テキスト＆構成図**
+   - 本README.md: プロジェクト概要、システム構成、API仕様、デプロイ手順
+   - システム構成図: 上記のMermaid図（PDF → Opal → UI → Cloud Run → Vertex AI Search）
+   - DEMO.md: デモ手順（タイムライン形式、Agentic 5-step対応）
+
+3. **デモ動画**
+   - デモ手順: `DEMO.md`に記載（3-4分のデモスクリプト）
+   - 実際の動画: 別途提出（DEMO.mdの手順に従って録画）
+
+### デモデータについて
+
+**重要**: 本プロジェクトで使用しているすべてのデモデータは**架空データ（ダミーデータ）**です。
+
+- `data/demo/*.json`: デモ用の架空の見積書データ
+- `data/golden/*.json`: 評価用の架空のテストケース
+
+実在の企業名、請求書、見積書は一切含まれていません。すべてのデータは、ハッカソン提出用に作成された架空のサンプルデータです。
+
+### 本プロジェクトのAgentic定義
+
+本システムにおける「Agentic AI」は、以下の自律的な判断プロセスを実現します：
+
+1. **止まる（GUIDANCE）**: 判断が割れる可能性がある場合、自動判定を停止
+2. **根拠提示**: 判定根拠（Evidence）と不足情報（Missing Fields）を明示
+3. **質問**: 不足情報について「なぜ必要か（Why Missing Matters）」を説明し、ユーザーに質問
+4. **再実行**: ユーザーの回答を受け取り、再分類を実行
+5. **差分保存**: 再実行前後の変化（Decision/Confidence/Trace/Citations）を明確に表示
+
+この設計により、「AIが判断できない場面では自動化を止め、人間の判断を支援する」という協働型のAgentic AIを実現しています。
+
+### システム構成図
+
+```mermaid
+graph TB
+    A[見積書PDF] -->|Opal OCR| B[Opal JSON]
+    B -->|Streamlit UI| C[ユーザー入力]
+    C -->|POST /classify| D[Cloud Run<br/>FastAPI]
+    D -->|Adapter| E[正規化スキーマ]
+    E -->|Classifier| F{判定結果}
+    F -->|CAPITAL_LIKE<br/>EXPENSE_LIKE| G[判定完了]
+    F -->|GUIDANCE| H[不足情報提示]
+    H -->|Vertex AI Search<br/>flagged| I[法令エビデンス]
+    I -->|Citations| D
+    H -->|ユーザー回答| J[再実行]
+    J -->|answers| D
+    D -->|diff表示| K[Before → After<br/>Decision/Confidence/Trace]
+    K -->|Evidence| L[Streamlit UI<br/>結果表示]
+    G --> L
+    
+    style D fill:#4285f4,stroke:#1a73e8,color:#fff
+    style I fill:#ea4335,stroke:#c5221f,color:#fff
+    style F fill:#fbbc04,stroke:#f9ab00,color:#000
+    style K fill:#34a853,stroke:#137333,color:#fff
+```
 
 概要
 
@@ -395,6 +474,45 @@ curl -X POST http://localhost:8000/classify \
 `policy_path` が指定されない場合、デフォルトで `policies/company_default.json` が使用されます。
 `answers` はオプショナルで、GUIDANCE判定時に不足情報を補完して再分類を試みます。
 
+#### POST /classify_pdf (Optional, Feature-Flagged)
+
+PDFファイルを直接アップロードして固定資産判定を行います。
+
+**Feature Flag:** `PDF_CLASSIFY_ENABLED=1` (デフォルト: OFF)
+
+- **OFF時**: 400エラーで「PDF classification is disabled」を返す（クラッシュしない）
+- **ON時**: PDFをアップロード→抽出→正規化→分類→レスポンス（`/classify`と同じ形式）
+
+**リクエスト形式:**
+- `multipart/form-data`
+- `file`: PDFファイル（`application/pdf`）
+
+**レスポンス形式:**
+- `/classify`と同じ`ClassifyResponse`形式
+- `trace`に`pdf_upload`, `extract`, `extraction_to_opal`, `parse`, `rules`, `format`が含まれる
+
+**使用例（PowerShell）:**
+```powershell
+# Feature flagを有効化（ローカルテスト時）
+$env:PDF_CLASSIFY_ENABLED="1"
+
+# PDFをアップロード
+$pdfPath = ".\data\demo\sample.pdf"
+$response = Invoke-RestMethod -Uri "$ServiceUrl/classify_pdf" -Method Post -InFile $pdfPath -ContentType "multipart/form-data"
+```
+
+**UI動作（サーバ真実ベース）:**
+- **PDF Upload UI:** 常に表示される（ローカル環境変数は参照しない）。ユーザーは常にPDFアップロード欄を見ることができる。
+- **サーバ状態検出:** PDFをアップロードして「Classify PDF」をクリックすると、UIは`/classify_pdf`を呼び出し、API応答からサーバ側のfeature flag状態を検出する：
+  - **サーバがOFF（400/503で"disabled"）:** UIは明確なエラーを表示：「Server-side PDF_CLASSIFY_ENABLED=1 is required (feature is OFF on server)」とサーバ応答の詳細。これにより、Cloud Run側だけがONなのにUIがOFF表示になる事故を防ぐ。
+  - **サーバがON:** 通常の分類が進行し、Opal JSONフローと同じevidence-first表示、GUIDANCE loop、DIFF cardが表示される。
+
+**注意:**
+- デフォルトはOFF。テストやgolden set評価では不要。
+- PDF処理は`core/pdf_extract.py`の関数を使用（core/*は変更しない）。
+- 抽出が不十分な場合は`GUIDANCE`として返す（Stop-first設計）。
+- **UIは常にPDFアップロード欄を表示し、サーバ状態は実際のAPI応答（サーバ真実）で判断される。ローカル環境変数は参照しない。**
+
 レスポンス形式:
 ```json
 {
@@ -450,11 +568,16 @@ gcloud run deploy fixed-asset-agentic-api \
   --region asia-northeast1 \
   --allow-unauthenticated
 
-# 4. デプロイ後の疎通確認
+# 4. デプロイ後のスモーク確認（/health → /classify → /classify_pdf OFF）
+# PowerShell（1コマンドずつ。&&は使わない）
 curl.exe -s https://SERVICE_URL/health
+# → {"ok":true} であること
 
-# または PowerShell smoke script を使用
+# /classify は JSON で POST（略）。/classify_pdf は既定 OFF で 400 + detail.error=PDF_CLASSIFY_DISABLED を期待。
+# 確認項目: detail.how_to_enable と detail.fallback が含まれること（UI表示用）。
+# 一括実行する場合:
 .\scripts\smoke_cloudrun.ps1
+# （$env:CLOUD_RUN_URL 未設定時は既定 Cloud Run URL を使用。上記 3 段階をすべて検証）
 ```
 
 #### 方法2: 事前ビルドしたイメージからデプロイ
@@ -515,3 +638,25 @@ All tests passed!
 
 - **Golden Set Accuracy: 100.0%** (10/10 cases passed)
 - Last evaluated: 2026-01-20
+
+## OSS/Licenses
+
+本プロジェクトは以下のオープンソースライブラリを使用しています。各ライブラリのライセンスを遵守しています。
+
+### 主要依存関係
+
+- **pytest** (MIT License): テストフレームワーク
+- **streamlit** (Apache License 2.0): Web UIフレームワーク
+- **PyMuPDF (fitz)** (AGPL-3.0 License): PDF処理ライブラリ
+- **fastapi** (MIT License): Web APIフレームワーク
+- **uvicorn** (BSD License): ASGIサーバー
+- **gunicorn** (MIT License): WSGI HTTPサーバー
+- **requests** (Apache License 2.0): HTTPライブラリ
+
+### オプション依存関係
+
+- **google-cloud-discoveryengine** (Apache License 2.0): Vertex AI Search統合（feature-flagged、デフォルトOFF）
+
+各ライブラリのライセンス全文は、各パッケージの公式リポジトリまたはPyPIで確認できます。
+
+**注意**: PyMuPDF (fitz) は AGPL-3.0 ライセンスです。商用利用の場合は適切なライセンス確認が必要です。

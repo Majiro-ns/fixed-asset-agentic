@@ -1,5 +1,5 @@
 # Smoke test script for Cloud Run deployment
-# Tests /health and /classify endpoints
+# Tests /health, /classify, and /classify_pdf OFF (feature-flag default)
 
 $ErrorActionPreference = "Stop"
 
@@ -75,4 +75,41 @@ try {
     exit 1
 }
 
-Write-Host "`n=== All tests passed ===" -ForegroundColor Green
+# Test /classify_pdf OFF (feature flag default; expect 400 + detail.error=PDF_CLASSIFY_DISABLED)
+Write-Host "`n3. Testing /classify_pdf (expect OFF, 400)..." -ForegroundColor Yellow
+$pdfPath = Join-Path $PSScriptRoot "..\tests\fixtures\sample_text.pdf"
+if (-not (Test-Path $pdfPath)) {
+    Write-Host "   Skip: $pdfPath not found" -ForegroundColor Yellow
+} else {
+    try {
+        $form = @{ file = Get-Item -LiteralPath $pdfPath }
+        Invoke-WebRequest -Uri "$CloudRunUrl/classify_pdf" -Method Post -Form $form -UseBasicParsing | Out-Null
+        Write-Host "   ✗ /classify_pdf: Expected 400 (OFF), got 200" -ForegroundColor Red
+        exit 1
+    } catch {
+        $resp = $_.Exception.Response
+        if (-not $resp) {
+            Write-Host "   ✗ /classify_pdf: No response (e.g. connection failed) - $($_.Exception.Message)" -ForegroundColor Red
+            exit 1
+        }
+        $status = [int]$resp.StatusCode
+        if ($status -eq 400) {
+            $stream = $resp.GetResponseStream()
+            $reader = New-Object System.IO.StreamReader($stream)
+            $body = $reader.ReadToEnd() | ConvertFrom-Json
+            $reader.Close(); $stream.Close()
+            $err = $body.detail
+            if ($err -and $err.error -eq "PDF_CLASSIFY_DISABLED") {
+                Write-Host "   ✓ /classify_pdf OFF: 400 + detail.error=PDF_CLASSIFY_DISABLED" -ForegroundColor Green
+            } else {
+                Write-Host "   ✗ /classify_pdf: 400 but detail.error mismatch (got: $($err.error))" -ForegroundColor Red
+                exit 1
+            }
+        } else {
+            Write-Host "   ✗ /classify_pdf: Expected 400, got $status - $($_.Exception.Message)" -ForegroundColor Red
+            exit 1
+        }
+    }
+}
+
+Write-Host "`n=== All smoke tests passed ===" -ForegroundColor Green
