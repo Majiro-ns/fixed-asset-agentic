@@ -1,202 +1,353 @@
-# Fixed Asset Classification Demo Script (3-4 minutes)
+# Fixed Asset Classification - Demo Runbook
 
-## Overview
-Demonstrate the agentic fixed-asset classification service with evidence-first outputs and GUIDANCE Q&A loop.
+> **Purpose**: Demo script for Agentic AI Hackathon with Google Cloud (3-4 minutes)
+> **Target Audience**: Hackathon judges, technical evaluators
+> **Format**: Operation steps + Narration scripts + Emphasis points
 
-**This demo follows the Agentic 5-step process defined in README.md:**
-1. **止まる（GUIDANCE）**: 判断が割れる可能性がある場合、自動判定を停止
-2. **根拠提示**: 判定根拠（Evidence）と不足情報（Missing Fields）を明示
-3. **質問**: 不足情報について「なぜ必要か（Why Missing Matters）」を説明し、ユーザーに質問
-4. **再実行**: ユーザーの回答を受け取り、再分類を実行
-5. **差分保存**: 再実行前後の変化（Decision/Confidence/Trace/Citations）を明確に表示
+---
 
-## Setup (0:00-0:10)
-**Canonical launch command (ONLY use this):**
+## Timeline Overview
+
+| Time | Section | Duration | Focus |
+|------|---------|----------|-------|
+| 0:00-0:30 | Problem Statement | 30s | Why this matters |
+| 0:30-1:00 | Case 1: CAPITAL_LIKE | 30s | Clear classification |
+| 1:00-1:30 | Case 2: EXPENSE_LIKE | 30s | Rule-based decision |
+| 1:30-3:00 | Case 3: GUIDANCE + Agentic Loop | 90s | Stop-first design |
+| 3:00-3:30 | Technical Highlights | 30s | Architecture |
+| 3:30-4:00 | Summary | 30s | Key takeaways |
+
+---
+
+## Demo Data Notice
+
+All demo data in `data/demo/*.json` is **fictional sample data** created for this hackathon. No real company names, invoices, or estimates are included.
+
+---
+
+## Setup (Before Recording)
+
+### Launch Command (Canonical)
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo_ui.ps1
 ```
 
-**Manual fallback (only if demo_ui.ps1 fails):**
+### Manual Fallback (if demo_ui.ps1 fails)
 ```bash
 streamlit run ui/app_minimal.py
 ```
 
-**Before starting:**
-- Show Cloud Run URL in sidebar: `https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app`
-- Mention: "Rule-first, evidence-first classification with agentic assistance for ambiguous cases"
-- **Note:** Legal Citations feature is OFF by default (UI shows "Legal Citations: OFF"). To enable, set `VERTEX_SEARCH_ENABLED=1` (see "Enable Legal Citations" section below).
+### Pre-Demo Checklist
+- [ ] Cloud Run URL visible in sidebar: `https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app`
+- [ ] Browser: Chrome, full screen mode, 1920x1080
+- [ ] Demo JSON files loaded in dropdown
+- [ ] Legal Citations: OFF by default (shown in sidebar)
 
-**デモデータについて:**
-- 本デモで使用するすべてのデータ（`data/demo/*.json`）は**架空データ（ダミーデータ）**です。
-- 実在の企業名、請求書、見積書は一切含まれていません。
+### Recording Setup
+- **Resolution**: 1920x1080 recommended
+- **Pacing**: Moderate (150 words/min), pause when showing results
+- **Audio**: Clear narration, let visual changes settle before speaking
 
-## Demo Timeline
+---
 
-### 0:10-0:40 — CAPITAL_LIKE Case (30 seconds)
-**Actions:**
+## Section 1: Problem Statement (0:00-0:30)
+
+### Screen Direction
+- **0:00-0:10**: Title card or Streamlit UI welcome screen
+- **0:10-0:30**: Point to architecture diagram or UI
+
+### Narration Script
+
+> **[0:00-0:05]**
+> "Fixed Asset Classification - an Agentic AI that knows when to stop."
+
+> **[0:05-0:15]**
+> "In accounting departments, classifying expenses as fixed assets or operating costs is critical for tax compliance. But AI systems that blindly automate this process create a dangerous problem: when the AI is wrong, there's no time to catch the error before month-end close."
+
+> **[0:15-0:25]**
+> "Our solution takes a different approach. Instead of forcing a decision on ambiguous cases, the system autonomously recognizes uncertainty and stops - asking for human judgment exactly when it's needed."
+
+> **[0:25-0:30]**
+> "Let me show you how it works."
+
+### Emphasis Points
+- **Key phrase**: "knows when to stop"
+- **Problem**: Blind automation + time pressure = undetected errors
+- **Solution**: Autonomous stop decision
+
+---
+
+## Section 2: Case 1 - CAPITAL_LIKE (0:30-1:00)
+
+### Actions
 1. Load `demo01_capital_server.json` from dropdown
 2. Click "Classify"
 
-**Point to (10-second comprehension):**
-- **Decision:** `[CAPITAL_LIKE]` (prominent at top)
-- **Confidence:** ~0.8
-- **Valid Document:** Yes
-- **Trace:** `extract -> parse -> rules -> format` (4 steps)
+### Screen Direction
+1. Show Streamlit UI (browser)
+2. Highlight: Decision badge, Confidence score, Evidence panel
 
-**Evidence-first display:**
-- Evidence panel (expandable, shows Line 1, description, confidence, source text)
-- Reasons: "サーバー新設工事" contains "新設" keyword
+### Narration Script
 
-**Say:** "Clear classification with evidence. Keywords trigger rule-based decision. This demonstrates step 1-2 of the Agentic process: the system makes a decision and shows evidence."
+> **[0:30-0:35]**
+> "First, a straightforward case. This invoice is for a new server installation."
 
-### 0:40-1:10 — EXPENSE_LIKE Case (30 seconds)
-**Actions:**
+> **[0:35-0:50]**
+> "The system immediately returns CAPITAL_LIKE with high confidence. Notice the evidence panel - it shows exactly which keywords triggered this classification and the source text."
+
+> **[0:50-1:00]**
+> "Clear cases are handled automatically with full traceability."
+
+### Point to (Visual Highlights)
+- **Decision**: `[CAPITAL_LIKE]` (green, prominent at top)
+- **Confidence**: ~0.8
+- **Valid Document**: Yes
+- **Trace**: `extract -> parse -> rules -> format` (4 steps)
+- **Evidence panel**: Line 1, description, confidence, source text
+- **Reasons**: "contains keyword triggering capital classification"
+
+### Emphasis Points
+- **Visual**: Green "CAPITAL_LIKE" badge
+- **Key message**: Automatic + traceable
+
+---
+
+## Section 3: Case 2 - EXPENSE_LIKE (1:00-1:30)
+
+### Actions
 1. Load `demo03_expense_maintenance.json` from dropdown
 2. Click "Classify"
 
-**Point to:**
-- Decision: `[EXPENSE_LIKE]`
-- Evidence panel: Line 1 details
-- Reasons: "設備調整" contains "調整" keyword
+### Narration Script
 
-**Say:** "Different classification based on expense keywords. Rule-based system handles common cases."
+> **[1:00-1:05]**
+> "Now a maintenance case. Equipment adjustment - clearly operational."
 
-### 1:10-3:10 — GUIDANCE Case with Agentic Loop (2 minutes)
-**Actions:**
+> **[1:05-1:20]**
+> "EXPENSE_LIKE classification. The keyword 'adjustment' triggered this. Rule-based decisions handle 80% of cases instantly."
+
+> **[1:20-1:30]**
+> "Speed and consistency - the system applies the same rules every time."
+
+### Point to (Visual Highlights)
+- **Decision**: `[EXPENSE_LIKE]` (blue)
+- **Evidence panel**: Line 1 details
+- **Reasons**: keyword-triggered classification
+
+### Emphasis Points
+- **Visual**: Blue "EXPENSE_LIKE" badge
+- **Speed**: Near-instant response
+- **Key message**: Rule-first design
+
+---
+
+## Section 4: Case 3 - GUIDANCE + Agentic Loop (1:30-3:00)
+
+This is the core demonstration of the **Agentic 5-step process**:
+
+1. **Stop (GUIDANCE)**: Detect ambiguity, halt automatic classification
+2. **Evidence**: Show reasoning and missing information
+3. **Question**: Explain why missing info matters, prompt user
+4. **Re-run**: Process with additional context
+5. **Diff**: Display before/after comparison with full trace
+
+### Actions
 1. Load `demo04_guidance_ambiguous.json` from dropdown
 2. Click "Classify"
+3. Observe GUIDANCE result
+4. Fill in answers (use quick-pick OR form fields)
+5. Click "Re-run Classification with Answers"
+6. Show DIFF card
 
-**Point to (Agentic 5-step demonstration):**
+### Narration Script
 
-**Step 1: 止まる（GUIDANCE）**
-- Decision: `[GUIDANCE]` (yellow)
+> **[1:30-1:40]**
+> "Now the interesting part. This invoice has ambiguous wording - it could be a repair or an upgrade. Watch what happens."
+
+> **[1:40-1:55]**
+> "GUIDANCE. The system stopped itself. It detected ambiguity and autonomously decided not to guess. This is the core of our Agentic design."
+
+> **[1:55-2:10]**
+> "Look at this panel. The system explains exactly what information is missing and why it matters for classification. It's not just saying 'I don't know' - it's telling you what to check."
+
+> **[2:10-2:25]**
+> "I'll provide the context using these quick-pick options. This simulates asking the vendor or checking the contract."
+
+> **[2:25-2:40]**
+> "Re-run... and now we get a confident decision."
+
+> **[2:40-3:00]**
+> "The DIFF card shows exactly what changed - decision, confidence, and the reasoning trace. Full audit trail for compliance."
+
+### Point to (Visual Highlights)
+
+**Step 1-2: Stop and Evidence**
+- **Decision**: `[GUIDANCE]` (yellow badge)
 - **"Agent Needs Information" panel** (prominent at top):
   - Missing fields checklist
-  - "Why This Matters" (1-3 bullets, prominent)
-  - "What You Should Answer" (guidance text)
+  - "Why This Matters" (1-3 bullets)
+  - "What You Should Answer"
 
-**Step 2: 根拠提示**
-- Evidence panel (shows source text, confidence)
-- Missing fields list
-- Why missing matters (explanation)
-
-**Step 3: 質問**
+**Step 3: Question**
 - Quick-pick buttons: "Repair/Maintenance", "Upgrade/New Asset", "Clear All Answers"
 - Form fields for missing_fields (with help text)
 
-**Say:** "Ambiguous case triggers GUIDANCE. System identifies missing information and explains why it matters. This is step 1-3 of the Agentic process: stop, show evidence, ask questions."
+**Step 4-5: Re-run and Diff**
+- **DIFF card** (appears at top after re-run):
+  - Decision: `GUIDANCE -> CAPITAL_LIKE` (or similar)
+  - Confidence: `0.70 -> 0.85`
+  - Trace: shows `rerun_with_answers` step added
+  - Citations: `0 -> 0` (or `0 -> 3` if VERTEX_SEARCH_ENABLED=1)
 
-**Step 4: 再実行**
-- Fill in answers (use quick-pick OR form fields)
-- Click "Re-run Classification with Answers"
+### Emphasis Points
+- **Critical visual**: Yellow "GUIDANCE" badge
+- **Agentic moment**: System autonomously stops
+- **Resolution**: DIFF card showing before/after
+- **Audit**: Complete trace of decision change
 
-**Step 5: 差分保存**
-- **DIFF card appears at top:**
-  - Decision: `GUIDANCE → CAPITAL_LIKE` (or similar)
-  - Confidence: `0.70 → 0.85`
-  - Trace: `extract → parse → rules → format` → `extract → parse → rules → rerun_with_answers → format`
-  - Citations: `0 → 0` (or `0 → 3` if VERTEX_SEARCH_ENABLED=1)
+---
 
-**Say:** "Agentic loop shows exactly what changed. The system re-evaluates with your context and provides a clear before/after comparison. This completes steps 4-5: rerun and show diff."
+## Section 5: Technical Highlights (3:00-3:30)
 
-**Legal Citations (if enabled):**
-- If `VERTEX_SEARCH_ENABLED=1` is set, show "Legal Citations (Google Cloud Search)" section with citations
-- If not set, show "Legal Citations: OFF (set VERTEX_SEARCH_ENABLED=1 to enable)"
+### Screen Direction
+- Show sidebar with Cloud Run URL
+- Or show architecture diagram (from README.md mermaid)
 
-### 3:10-3:40 — API Integration (30 seconds)
-**Show:**
-- Sidebar Service URL
+### Narration Script
+
+> **[3:00-3:10]**
+> "Under the hood, this runs on Google Cloud. Cloud Run hosts the API. Document AI handles PDF extraction. Optionally, Vertex AI Search provides legal regulation citations."
+
+> **[3:10-3:20]**
+> "The classifier uses a rule-first design with frozen schema. This means reproducible, testable decisions - not black-box AI."
+
+> **[3:20-3:30]**
+> "Golden set evaluation shows 100% accuracy on 10 test cases. The system is ready for production deployment."
+
+### Point to
+- Sidebar Service URL: `https://fixed-asset-agentic-api-...`
 - Mention: "UI calls Cloud Run API via POST /classify"
-- Show "Full Result JSON" expander to show API response structure
-- Mention: WIN+1 fields (is_valid_document, confidence, trace, missing_fields, why_missing_matters, citations)
+- Show "Full Result JSON" expander (optional)
 
-### 3:40-3:50 — Closing (10 seconds)
-**Summary:**
-- Rule-first classification with evidence
-- Agentic loop for GUIDANCE cases (5-step process: stop → evidence → question → rerun → diff)
-- Evaluation metrics: 100% accuracy on golden set (10/10 pass)
-- Cloud Run deployment ready
+### Emphasis Points
+- **Google Cloud stack**: Cloud Run, Document AI, Vertex AI Search
+- **Design principle**: Rule-first, frozen schema
+- **Quality**: 100% golden set accuracy (10/10 pass)
 
-**Prove evaluation:**
+---
+
+## Section 6: Summary (3:30-4:00)
+
+### Narration Script
+
+> **[3:30-3:40]**
+> "To summarize: this is an Agentic AI that classifies fixed assets with evidence and stops when uncertain. It doesn't replace human judgment - it supports it by knowing when to ask."
+
+> **[3:40-3:50]**
+> "Future extensions include integration with accounting systems and historical decision comparison - always maintaining the stop-first design."
+
+> **[3:50-4:00]**
+> "Fixed Asset Agentic - AI that's smart enough to know when not to decide. Thank you."
+
+### Emphasis Points
+- **Tagline**: "Smart enough to know when not to decide"
+- **Future**: Extensible while maintaining core design
+
+### Prove Evaluation (Optional)
 ```bash
 python scripts/eval_golden.py
 ```
 
-## Cloud Run デプロイ後スモーク（最小）
+---
 
-デプロイ後の確認は次の 3 段階。PowerShell は 1 コマンドずつ（`&&` 禁止）。
+## Appendix A: Cloud Run Smoke Test
 
-1. **/health** — `curl.exe -s https://SERVICE_URL/health` → `{"ok":true}`
-2. **/classify** — JSON で POST（Opal 形式）。`decision` / `trace` 等が返ること。
-3. **/classify_pdf OFF** — 既定 OFF のため 400。`detail.error == "PDF_CLASSIFY_DISABLED"` かつ `detail.how_to_enable` / `detail.fallback` が含まれること（UI表示用）。
+Post-deployment verification (PowerShell, one command at a time):
 
-一括実行: `.\scripts\smoke_cloudrun.ps1`（上記 3 段階をすべて検証）。`$env:CLOUD_RUN_URL` 未設定時は既定 URL を使用。
-
-## PDF Upload Demo (Optional)
-
-**Feature Flag:** `PDF_CLASSIFY_ENABLED` (default: OFF)
-
-To enable PDF upload functionality:
-
-1. Set environment variable:
+1. **/health**
    ```powershell
-   $env:PDF_CLASSIFY_ENABLED="1"
+   curl.exe -s https://SERVICE_URL/health
    ```
+   Expected: `{"ok":true}`
 
-2. Restart the API service (Cloud Run or local).
+2. **/classify** - POST with Opal JSON format
+   Expected: `decision`, `trace`, `evidence` in response
 
-3. In UI:
-   - Sidebar shows "PDF classification: ON" (or "OFF" if disabled)
-   - Upload PDF file via "PDF Upload (Optional)" section
-   - Click "Classify PDF" button
-   - Results display same as Opal JSON flow (Decision/Confidence/Evidence/GUIDANCE loop)
+3. **/classify_pdf OFF** - Default OFF, expect 400
+   Expected: `detail.error == "PDF_CLASSIFY_DISABLED"` with `how_to_enable` and `fallback`
 
-**UI Behavior (Server Truth-Based):**
-- **PDF Upload UI:** Always visible in Input section. UI does NOT check local environment variables. Users can always see and use the PDF upload option.
-- **Server Status Detection:** When PDF is uploaded and "Classify PDF" is clicked, UI calls `/classify_pdf` and detects server-side feature flag status from API response:
-  - **If server is OFF (400/503 with "disabled"):** UI shows clear error: "Server-side PDF_CLASSIFY_ENABLED=1 is required (feature is OFF on server)" with server response details. This prevents demo accidents where Cloud Run has the feature ON but UI shows OFF due to local env mismatch.
-  - **If server is ON:** Normal classification proceeds with same evidence-first display, GUIDANCE loop, DIFF card as Opal JSON flow
-- **Results:** Same evidence-first display, GUIDANCE loop, DIFF card as Opal JSON flow
+One-shot verification:
+```powershell
+.\scripts\smoke_cloudrun.ps1
+```
 
-**Note:** Default is OFF on server. The demo works perfectly with Opal JSON input. PDF upload is an optional enhancement. **UI always shows PDF upload option; server status is determined by actual API response (server truth), not local environment variables.**
+---
 
-## Enable Legal Citations (Optional)
+## Appendix B: Optional Features
 
-**Feature Flag:** `VERTEX_SEARCH_ENABLED` (default: OFF)
+### PDF Upload (Feature-Flagged)
 
-To enable Vertex AI Search (Discovery Engine) for legal/regulation citations:
+**Flag**: `PDF_CLASSIFY_ENABLED` (default: OFF)
 
-1. Set environment variables:
-   ```powershell
-   $env:VERTEX_SEARCH_ENABLED="1"
-   $env:GOOGLE_CLOUD_PROJECT="your-project-id"
-   $env:DISCOVERY_ENGINE_DATA_STORE_ID="your-datastore-id"
-   ```
+To enable:
+```powershell
+$env:PDF_CLASSIFY_ENABLED="1"
+```
 
-2. Install optional dependency (if not already installed):
-   ```powershell
-   pip install google-cloud-discoveryengine>=0.11.0
-   ```
+**UI Behavior (Server Truth-Based)**:
+- PDF Upload UI is always visible
+- Server status detected from actual API response
+- If server OFF: Clear error message shown
+- If server ON: Normal classification with same evidence-first display
 
-3. Restart the API service (Cloud Run or local).
+### Legal Citations / Vertex AI Search (Feature-Flagged)
 
-**UI Behavior:**
-- **When OFF (default):** UI shows "Legal Citations: OFF (set VERTEX_SEARCH_ENABLED=1 to enable)"
-- **When ON:** UI shows "Legal Citations (Google Cloud Search)" section with citation cards (title, snippet, URI, relevance_score)
-- **In DIFF card:** Citations count shows `0 → 0` (OFF) or `0 → 3` (ON, if citations found)
+**Flag**: `VERTEX_SEARCH_ENABLED` (default: OFF)
 
-**Note:** Default is OFF. Tests and golden set evaluation do not require this feature. The demo works perfectly without this feature enabled.
+To enable:
+```powershell
+$env:VERTEX_SEARCH_ENABLED="1"
+$env:GOOGLE_CLOUD_PROJECT="your-project-id"
+$env:DISCOVERY_ENGINE_DATA_STORE_ID="your-datastore-id"
+pip install google-cloud-discoveryengine>=0.11.0
+```
 
-## Timing Breakdown (Timeline Format)
-- **0:00-0:10** Setup (10s)
-- **0:10-0:40** Case 1 (CAPITAL): 30s
-- **0:40-1:10** Case 2 (EXPENSE): 30s
-- **1:10-3:10** Case 3 (GUIDANCE + Agentic Loop): 120s
-- **3:10-3:40** API Integration: 30s
-- **3:40-3:50** Closing: 10s
-- **Total: ~3 minutes 50 seconds**
+**UI Behavior**:
+- When OFF: "Legal Citations: OFF" shown
+- When ON: Citations cards with title, snippet, URI, relevance_score
+- DIFF card shows Citations count change
+
+### Document AI (Cloud AI)
+
+**Flag**: `USE_DOCAI=1` enables Document AI for PDF extraction. Falls back to PyMuPDF/pdfplumber when unset.
+
+---
+
+## Appendix C: Quick Reference
+
+### Agentic 5-Step Process
+1. **Stop (GUIDANCE)**: Detect ambiguity, halt automatic classification
+2. **Evidence**: Show reasoning and missing information
+3. **Question**: Explain why missing info matters, prompt user
+4. **Re-run**: Process with additional context
+5. **Diff**: Display before/after comparison with full trace
+
+### Key Differentiators
+- **Stop-first design**: Unlike typical automation that forces decisions
+- **Evidence transparency**: Every decision has traceable reasoning
+- **Human-AI collaboration**: AI handles clear cases, humans handle edge cases
+- **Audit-ready**: Complete trace for compliance requirements
+
+### Key Moments to Emphasize (Recording)
+1. **0:20** - "knows when to stop" (lean into this phrase)
+2. **1:45** - GUIDANCE result appears (pause for effect)
+3. **2:40** - DIFF card appears (highlight the comparison)
+4. **3:55** - Closing tagline
+
+---
 
 ## Notes
+
 - Keep it fast-paced
 - Focus on evidence and traceability
 - Emphasize the agentic loop as the "WIN+1" feature

@@ -96,8 +96,41 @@ def _mark_methods(methods: List[str]) -> str:
 
 
 def _try_docai(path: Path) -> Optional[Dict[str, Any]]:
-    # Placeholder for DocAI: intentionally returns None. Real implementation should go here.
-    return None
+    """Extract PDF using Google Cloud Document AI. Only used when USE_DOCAI=1."""
+    if not _bool_env("USE_DOCAI", False):
+        return None
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+    processor_id = os.getenv("DOCAI_PROCESSOR_ID")
+    if not project_id or not processor_id:
+        return None
+    location = os.getenv("DOCAI_LOCATION", "us")
+    try:
+        from google.cloud.documentai_v1 import DocumentProcessorServiceClient
+        from google.cloud.documentai_v1.types import ProcessRequest, RawDocument
+    except ImportError:
+        return None
+    try:
+        client = DocumentProcessorServiceClient()
+        name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+        raw_doc = RawDocument(content=path.read_bytes(), mime_type="application/pdf")
+        req = ProcessRequest(name=name, raw_document=raw_doc)
+        result = client.process_document(request=req)
+        doc = result.document
+        text = (doc.text or "") if (doc and hasattr(doc, "text")) else ""
+        num_pages = len(doc.pages) if (doc and hasattr(doc, "pages") and doc.pages) else 1
+        return {
+            "meta": {
+                "filename": path.name,
+                "sha256": _compute_sha256(path),
+                "num_pages": num_pages,
+                "extracted_at": datetime.datetime.utcnow().isoformat() + "Z",
+                "source": "docai",
+                "warnings": [],
+            },
+            "pages": [{"page": 1, "text": text, "method": "docai"}],
+        }
+    except Exception:
+        return None
 
 
 def extract_pdf(path: Path, *, use_docai: bool = False, use_ocr: bool = False) -> Dict[str, Any]:

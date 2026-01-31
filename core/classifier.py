@@ -68,7 +68,61 @@ def _append_flag(flags: List[str], flag: str) -> None:
         flags.append(flag)
 
 
-def classify_line_item(item: Dict[str, Any], policy: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _apply_tax_rules(
+    amount: Optional[float],
+    total_amount: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Apply Japanese tax amount thresholds (10/20/30/60万).
+    Returns list of {rule_id, reason, suggests_guidance}.
+    suggest_guidance=True means: set classification to GUIDANCE (stop-first).
+    """
+    if not isinstance(amount, (int, float)) or amount <= 0:
+        return []
+    rules: List[Dict[str, Any]] = []
+    if amount < 100_000:
+        rules.append({
+            "rule_id": "R-AMOUNT-003",
+            "reason": "10万円未満のため少額固定資産（費用処理可能）の可能性",
+            "suggests_guidance": False,
+        })
+    elif amount < 200_000:
+        rules.append({
+            "rule_id": "R-AMOUNT-100k200k",
+            "reason": "10万円以上20万円未満のため3年一括償却等の取扱いの確認が必要",
+            "suggests_guidance": True,
+        })
+    elif amount < 300_000:
+        rules.append({
+            "rule_id": "R-AMOUNT-001",
+            "reason": "20万円以上30万未満のため一括償却資産の可能性（要確認）",
+            "suggests_guidance": True,
+        })
+        rules.append({
+            "rule_id": "R-AMOUNT-SME300k",
+            "reason": "30万円未満中小企業特例の適用可能性のため要確認",
+            "suggests_guidance": True,
+        })
+    elif amount < 600_000:
+        rules.append({
+            "rule_id": "R-AMOUNT-001",
+            "reason": "20万円以上60万円未満のため一括償却資産の取扱い",
+            "suggests_guidance": False,
+        })
+    else:
+        rules.append({
+            "rule_id": "R-AMOUNT-600k",
+            "reason": "60万円以上のため修繕費vs資本的支出の判定には追加情報が必要",
+            "suggests_guidance": True,
+        })
+    return rules
+
+
+def classify_line_item(
+    item: Dict[str, Any],
+    policy: Optional[Dict[str, Any]] = None,
+    doc: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     description = str(item.get("description") or "")
     policy_cfg = _safe_policy(policy)
     policy_keywords = policy_cfg.get("keywords") if isinstance(policy_cfg.get("keywords"), dict) else {}
@@ -126,6 +180,18 @@ def classify_line_item(item: Dict[str, Any], policy: Optional[Dict[str, Any]] = 
     ):
         _append_flag(flags, "policy:amount_threshold")
 
+    # Tax rules (10/20/30/60万, stop-first): add flags; suggests_guidance -> GUIDANCE
+    total_amount = None
+    if isinstance(doc, dict):
+        totals = doc.get("totals") or {}
+        total_amount = totals.get("total") if isinstance(totals, dict) else None
+    tax_results = _apply_tax_rules(amount_value if isinstance(amount_value, (int, float)) and not isinstance(amount_value, bool) else None, total_amount)
+    for tr in tax_results:
+        flag = f"tax_rule:{tr['rule_id']}:{tr['reason']}"
+        _append_flag(flags, flag)
+        if tr.get("suggests_guidance") is True:
+            classification = schema.GUIDANCE
+
     label_ja = LABEL_JA[classification]
 
     if classification == schema.CAPITAL_LIKE:
@@ -156,6 +222,6 @@ def classify_document(doc: Dict[str, Any], policy: Optional[Dict[str, Any]] = No
 
     for item in line_items:
         if isinstance(item, dict):
-            classify_line_item(item, policy)
+            classify_line_item(item, policy, doc=doc)
 
     return doc

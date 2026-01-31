@@ -22,3 +22,8 @@ data/
 !data/demo/**/*.json
 
 openapi.json
+
+.gcloud_config/
+add_apikey.bat
+deploy.bat
+deploy_now.bat

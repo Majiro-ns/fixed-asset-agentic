@@ -21,6 +21,19 @@ except ImportError:
     def get_citations_for_guidance(*args, **kwargs):
         return []
 
+# Optional: Gemini classification integration (feature-flagged)
+# Enabled with GEMINI_ENABLED=1
+GEMINI_ENABLED = os.environ.get("GEMINI_ENABLED", "0") == "1"
+try:
+    from api.gemini_classifier import classify_with_gemini, classify_line_items
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+    def classify_with_gemini(*args, **kwargs):
+        return {"decision": "GUIDANCE", "confidence": 0.0, "reasoning": "Gemini未インストール", "flags": ["not_installed"]}
+    def classify_line_items(*args, **kwargs):
+        return []
+
 
 def _bool_env(name: str, default: bool = False) -> bool:
     """Check environment variable for boolean flag."""
@@ -117,6 +130,10 @@ def _format_classify_response(
                 snippets = ev.get("snippets")
                 if snippets:
                     evidence_item["snippets"] = snippets
+                # Surface tax_rule flags in evidence (rule IDs for 10/20/30/60万)
+                tax_rules = [f for f in item.get("flags", []) if isinstance(f, str) and f.startswith("tax_rule:")]
+                if tax_rules:
+                    evidence_item["tax_rules"] = tax_rules
                 evidence.append(evidence_item)
     
     # questions: for GUIDANCE items, generate questions from flags
@@ -206,31 +223,78 @@ async def root() -> Dict[str, str]:
 async def classify(request: ClassifyRequest) -> ClassifyResponse:
     """
     Classify fixed asset items from Opal JSON.
-    
+
     Uses existing core.adapter and core.classifier functions.
     WIN+1: Supports agentic loop with answers for GUIDANCE cases.
+
+    Gemini Integration (GEMINI_ENABLED=1):
+    - First attempts classification with Gemini API
+    - Falls back to rule-based classifier on failure
     """
     try:
         trace_steps = ["extract"]
         # Use existing pipeline functions
         opal_json = request.opal_json
-        
+
         # Normalize using adapter
         normalized = adapt_opal_to_v1(opal_json)
         trace_steps.append("parse")
-        
+
         # Load policy (default to company_default.json if not provided)
         policy_path = request.policy_path
         if not policy_path:
             default_policy = PROJECT_ROOT / "policies" / "company_default.json"
             if default_policy.exists():
                 policy_path = str(default_policy)
-        
+
         policy = load_policy(policy_path)
-        
-        # Classify using classifier
-        classified = classify_document(normalized, policy)
-        trace_steps.append("rules")
+
+        # Classify: Gemini or rule-based
+        classified = None
+        gemini_used = False
+
+        if GEMINI_ENABLED and GEMINI_AVAILABLE:
+            try:
+                # Try Gemini classification for each line item
+                trace_steps.append("gemini")
+                line_items = normalized.get("line_items", [])
+                doc_info = normalized.get("document_info", {})
+                context = {
+                    "vendor": doc_info.get("vendor"),
+                    "date": doc_info.get("date"),
+                }
+
+                # Classify each line item with Gemini
+                for item in line_items:
+                    description = item.get("description", "")
+                    amount = item.get("amount", 0) or 0
+
+                    gemini_result = classify_with_gemini(description, amount, context)
+
+                    # Apply Gemini result to item
+                    item["classification"] = gemini_result.get("decision", "GUIDANCE")
+                    item["label_ja"] = {
+                        "CAPITAL_LIKE": "資産寄り",
+                        "EXPENSE_LIKE": "費用寄り",
+                        "GUIDANCE": "要確認（判定しません）"
+                    }.get(item["classification"], "要確認")
+                    item["rationale_ja"] = gemini_result.get("reasoning", "")
+                    item["flags"] = gemini_result.get("flags", [])
+                    item["gemini_confidence"] = gemini_result.get("confidence", 0.0)
+
+                classified = normalized
+                gemini_used = True
+                trace_steps.append("gemini_success")
+
+            except Exception:
+                # Gemini failed - fall back to rule-based
+                trace_steps.append("gemini_fallback")
+                classified = None
+
+        # Rule-based classification (default or fallback)
+        if classified is None:
+            classified = classify_document(normalized, policy)
+            trace_steps.append("rules")
         
         # Format initial response
         initial_response = _format_classify_response(classified, trace_steps=trace_steps.copy())
@@ -283,8 +347,10 @@ async def classify(request: ClassifyRequest) -> ClassifyResponse:
         trace_steps.append("format")
         return initial_response
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Classification failed. Please check input format.")
 
 
 @app.post("/classify_pdf", response_model=ClassifyResponse)
@@ -382,12 +448,21 @@ async def classify_pdf(
             if tmp_path.exists():
                 tmp_path.unlink()
         
-    except Exception as e:
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "PDF_CLASSIFY_ERROR",
+                "message": f"Invalid PDF: {str(e)}",
+                "how_to_enable": None,
+            },
+        )
+    except Exception:
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "PDF_CLASSIFY_ERROR",
-                "message": f"PDF classification failed: {str(e)}",
+                "message": "PDF classification failed. Please check file format.",
                 "how_to_enable": None,
             },
         )

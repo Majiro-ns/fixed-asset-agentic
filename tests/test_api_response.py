@@ -1,4 +1,4 @@
-"""Test API response schema includes WIN+1 additive fields."""
+"""Test API response schema includes WIN+1 additive fields and evidence.tax_rules."""
 import sys
 from pathlib import Path
 
@@ -6,6 +6,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.main import _format_classify_response
+from core.adapter import adapt_opal_to_v1
+from core.classifier import classify_document
+from core.policy import load_policy
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_response_includes_win1_fields():
@@ -116,3 +121,31 @@ def test_non_guidance_has_empty_missing_fields():
     assert response.decision != "GUIDANCE"
     assert response.missing_fields == []
     assert response.why_missing_matters == []
+
+
+def test_evidence_tax_rules_reflects_flags_200k():
+    """evidence[].tax_rules に flags の tax_rule:* が反映される（200k: R-AMOUNT-001 等）."""
+    policy_path = PROJECT_ROOT / "policies" / "company_default.json"
+    policy = load_policy(str(policy_path) if policy_path.exists() else None)
+    opal = {"line_items": [{"item_description": "test 200k", "amount": 200000}]}
+    norm = adapt_opal_to_v1(opal)
+    classified = classify_document(norm, policy)
+    resp = _format_classify_response(classified)
+    tax_rule_ev = [e for e in resp.evidence if isinstance(e.get("tax_rules"), list) and e["tax_rules"]]
+    assert len(tax_rule_ev) >= 1
+    all_tax = [f for e in tax_rule_ev for f in e["tax_rules"] if isinstance(f, str) and f.startswith("tax_rule:")]
+    assert any("R-AMOUNT-001" in t or "R-AMOUNT-SME300k" in t for t in all_tax)
+
+
+def test_evidence_tax_rules_reflects_flags_600k():
+    """evidence[].tax_rules に flags の tax_rule:* が反映される（600k: R-AMOUNT-600k）."""
+    policy_path = PROJECT_ROOT / "policies" / "company_default.json"
+    policy = load_policy(str(policy_path) if policy_path.exists() else None)
+    opal = {"line_items": [{"item_description": "test 600k", "amount": 600000}]}
+    norm = adapt_opal_to_v1(opal)
+    classified = classify_document(norm, policy)
+    resp = _format_classify_response(classified)
+    tax_rule_ev = [e for e in resp.evidence if isinstance(e.get("tax_rules"), list) and e["tax_rules"]]
+    assert len(tax_rule_ev) >= 1
+    all_tax = [f for e in tax_rule_ev for f in e["tax_rules"] if isinstance(f, str) and f.startswith("tax_rule:")]
+    assert any("R-AMOUNT-600k" in t for t in all_tax)

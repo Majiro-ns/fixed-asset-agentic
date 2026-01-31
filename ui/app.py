@@ -18,28 +18,28 @@ from core.policy import load_policy
 from core.pdf_extract import extract_pdf, extraction_to_opal
 from core.pipeline import run_pdf_pipeline
 
-APP_TITLE = "���Ϗ� �Œ莑�Y����iOpal���o �~ Agentic����j"
-APP_SUB = "Opal�����o / Agent������iStop�݌v�j"
-TAGLINE = "�����s�͎~�߂�B�l������ׂ��s�����c���B"
+APP_TITLE = "見積書 固定資産判定（Opal抽出 × Agentic判定）"
+APP_SUB = "Opal項目抽出 / Agent判定処理（Stop設計）"
+TAGLINE = "疑わしい行は止める。人が見るべき行だけ残す。"
 
-VALUE_STATEMENT = "AI�������s�ł͎��������~�߁A�o�����m�F���ׂ��s�����𕂂��яオ�点�܂��B"
+VALUE_STATEMENT = "AIが迷う行では自動判定を止め、人が確認すべき行だけを浮かび上がらせます。"
 VALUE_BULLETS = [
-    "��������Y�v��^��p�����̎��̂������",
-    "���f�����iflags�j���c���A�ォ�猟�؂ł���",
-    "AI�ɐӔC�������t�����A�ӔC���E��݌v����",
+    "固定資産/費用判定の誤りを防ぐ",
+    "判断根拠（flags）が残り、後から検証できる",
+    "AIに責任を押し付けない、責任境界の設計提案",
 ]
 
-STEP1 = "Step1�bOpal�Œ��o�i�h���JSON�j"
-STEP2 = "Step2�bAdapter���K���i�����X�L�[�} v1.0�j"
-STEP3 = "Step3�bClassifier����i3�l�E�f�肵�Ȃ��j"
+STEP1 = "Step1｜Opal抽出（揺れるJSON）"
+STEP2 = "Step2｜Adapter正規化（凍結スキーマ v1.0）"
+STEP3 = "Step3｜Classifier判定（3値・断定しない）"
 
-STOP_NOTE = "�v�m�F�͐��x�s���ł͂Ȃ��A���f��~�iStop�݌v�j�ł��B"
-STEP_LABELS = ["Step1 ���o", "Step2 ���K��", "Step3 ����"]
+STOP_NOTE = "要確認は精度不足ではなく、判断停止（Stop設計）です。"
+STEP_LABELS = ["Step1 抽出", "Step2 正規化", "Step3 判定"]
 
 SAMPLE_DIR = ROOT_DIR / "data" / "opal_outputs"
 POLICY_OPTIONS = {
-    "None�i�f�t�H���g�j": None,
-    "company_default�idemo�j": ROOT_DIR / "policies" / "company_default.json",
+    "None（デフォルト）": None,
+    "company_default（demo）": ROOT_DIR / "policies" / "company_default.json",
 }
 
 
@@ -54,7 +54,7 @@ def _safe_json_dumps(obj: Any) -> str:
 
 def _truncate(s: str, n: int = 30) -> str:
     s = s or ""
-    return s if len(s) <= n else s[:n] + "�c"
+    return s if len(s) <= n else s[:n] + "..."
 
 
 def _count_by_class(items: List[Dict[str, Any]]) -> Dict[str, int]:
@@ -91,7 +91,7 @@ def _to_table_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         evidence_short = _truncate(source_text, 30)
 
         if str(cls).upper() == "GUIDANCE":
-            prefix = "[�v�m�F] "
+            prefix = "[要確認] "
             if not label_ja.startswith(prefix):
                 label_ja = prefix + label_ja
             if not desc.startswith(prefix):
@@ -99,7 +99,7 @@ def _to_table_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         rows.append(
             {
-                "priority": "�v�m�F" if str(cls).upper() == "GUIDANCE" else "",
+                "priority": "要確認" if str(cls).upper() == "GUIDANCE" else "",
                 "line_no": it.get("line_no"),
                 "description": desc,
                 "amount_display": amount_display,
@@ -129,7 +129,7 @@ def _render_dataframe(rows: List[Dict[str, Any]]) -> None:
     else:
         ordered_rows = rows
     column_config = {
-        "amount_display": st.column_config.TextColumn("���z", help="�\���p�iJPY�J���}��؂�j"),
+        "amount_display": st.column_config.TextColumn("金額", help="表示用（JPYカンマ区切り）"),
     }
     try:
         st.dataframe(ordered_rows, hide_index=True, use_container_width=True, column_config=column_config)
@@ -153,15 +153,15 @@ def _summarize_flags(flags: Any) -> Optional[str]:
     for f in raw_list:
         s = str(f)
         if s.startswith("policy:"):
-            s = "��ƃ|���V�["
+            s = "企業ポリシー"
         elif s.startswith("mixed_keyword:"):
-            s = "�L�[���[�h"
+            s = "キーワード"
         elif s.startswith("regex:"):
-            s = "���K�\��"
+            s = "正規表現"
         humanized.append(s)
         if len(humanized) >= 3:
             break
-    return "�^".join(humanized)
+    return "/".join(humanized)
 
 
 def _render_warnings(warnings: Optional[List[Dict[str, Any]]]) -> None:
@@ -228,7 +228,7 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
     step_labels = STEP_LABELS
     current = st.session_state.step
     nav_step = st.radio(
-        "�X�e�b�v��I��",
+        "ステップを選択",
         options=list(range(3)),
         format_func=lambda i: step_labels[i],
         index=current,
@@ -239,44 +239,44 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
         current = nav_step
 
     st.progress(current / 2)
-    st.caption(f"���݁F{STEP_LABELS[current]}�iStep1��Step2��Step3�j")
+    st.caption(f"現在：{STEP_LABELS[current]}（Step1→Step2→Step3）")
 
     if st.session_state.step == 0:
         st.success(VALUE_STATEMENT)
-        st.markdown("### ���̃c�[���łł��邱��")
+        st.markdown("### このツールでできること")
         for b in VALUE_BULLETS:
-            st.write(f"�E{b}")
+            st.write(f"・{b}")
 
-        with st.expander("�i�ߕ��i3�X�e�b�v�j", expanded=True):
+        with st.expander("進め方（3ステップ）", expanded=True):
             st.write(STEP1)
             st.write(STEP2)
             st.write(STEP3)
 
-        st.markdown("## Step1�b���́iOpal���oJSON�j")
-        st.caption("Opal��OCR�E���ڒ��o�܂ł�S�����܂��B�����ŃT���v���I���܂���JSON�\�t���s���܂��B")
+        st.markdown("## Step1｜入力（Opal抽出JSON）")
+        st.caption("OpalがOCR・項目抽出までを担当します。ここでサンプル選択またはJSON貼付を行います。")
 
         colA, colB = st.columns([1, 1], gap="large")
 
         with colA:
-            st.markdown("### �T���v���I��")
+            st.markdown("### サンプル選択")
             samples: List[str] = []
             if SAMPLE_DIR.exists():
                 samples = sorted([p.name for p in SAMPLE_DIR.glob("*.json")])
-            sample_name = st.selectbox("Select a sample", options=(["(none)"] + samples), index=1 if len(samples) else 0)
+            sample_name = st.selectbox("サンプルを選択", options=(["（なし）"] + samples), index=1 if len(samples) else 0, help="デモ用のOpal JSONを選択できます")
 
             sample_data = None
-            if sample_name and sample_name != "(none)":
+            if sample_name and sample_name != "（なし）":
                 try:
                     sample_data = _read_json_file(SAMPLE_DIR / sample_name)
                 except Exception as e:
-                    st.error(f"�T���v���ǂݍ��݂Ɏ��s���܂���: {e}")
+                    st.error(f"サンプル読み込みに失敗しました: {e}")
 
         with colB:
-            st.markdown("### �e�L�X�g�\�t")
+            st.markdown("### テキスト貼付")
             pasted = st.text_area(
-                "Opal JSON ��\��t���i�T���v���I��������ꍇ�͕s�v�j",
+                "Opal JSON を貼付（サンプル選択した場合は不要）",
                 height=260,
-                placeholder='��: {"vendor": null, "invoice_date": "...", "line_items": [...]}',
+                placeholder='例: {"vendor": null, "invoice_date": "...", "line_items": [...]}',
             )
 
         opal_dict: Optional[Dict[str, Any]] = None
@@ -286,18 +286,18 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
             try:
                 opal_dict = json.loads(pasted)
             except Exception as e:
-                st.error(f"JSON�̃p�[�X�Ɏ��s���܂���: {e}")
+                st.error(f"JSONのパースに失敗しました: {e}")
 
         st.divider()
 
         left, right = st.columns([1, 1])
         with left:
-            st.caption("��������s����Ǝ�����Step3�֐i�݂܂��BStep2�̓i�r�Ŋm�F�ł��܂��B")
+            st.caption("判定を実行すると自動でStep3へ進みます。Step2はナビで確認できます。")
         with right:
             run_disabled = opal_dict is None
             st.caption(f"Policy: {policy_display}")
 
-            if st.button("��������s���Đi��", type="primary", use_container_width=True, disabled=run_disabled):
+            if st.button("判定を実行して進む", type="primary", use_container_width=True, disabled=run_disabled):
                 try:
                     adapted = adapt_opal_to_v1(opal_dict)
                     policy_cfg = load_policy(policy_path)
@@ -309,49 +309,49 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
                     st.session_state.final_doc = final_doc
                     _go(2)
                 except Exception as e:
-                    st.error(f"�����Ɏ��s���܂���: {e}")
+                    st.error(f"判定に失敗しました: {e}")
 
-        with st.expander("����JSON�v���r���[�i�C�Ӂj", expanded=False):
+        with st.expander("入力JSONプレビュー（任意）", expanded=False):
             if opal_dict is None:
-                st.caption("�T���v���I���܂��͓\�t���s���ƃv���r���[�ł��܂��B")
+                st.caption("サンプル選択または貼付を行うとプレビューできます。")
             else:
                 st.code(_safe_json_dumps(opal_dict), language="json")
 
         return
 
     if st.session_state.step == 1:
-        st.markdown("## Step2�b���K���iAdapter���ʁj")
-        st.caption("Opal���o���Œ�X�L�[�}�ɐ��K���������e���m�F���܂��B���֐i�ނƔ��茋�ʂ������܂��B")
+        st.markdown("## Step2｜正規化（Adapter結果）")
+        st.caption("Opal抽出を固定スキーマに正規化した内容を確認します。次へ進むと判定結果が出ます。")
         st.caption(f"Policy: {st.session_state.policy_display}")
         adapted = st.session_state.adapted_doc
 
         if adapted is None:
-            st.warning("Step1�ŃT���v���I���܂��͓\�t���s���A����{�^���������Ă��������B")
+            st.warning("Step1でサンプル選択または貼付を行い、判定ボタンを押してください。")
         else:
-            st.info("Adapter�o�́i��v�t�B�[���h�̂ݔ����j�B")
+            st.info("Adapter出力（主要フィールドのみ抜粋）。")
             st.code(_safe_json_dumps(adapted), language="json")
 
         st.divider()
         b1, b2 = st.columns([1, 1])
         with b1:
-            if st.button("�߂�iStep1 ���́j", use_container_width=True):
+            if st.button("戻る（Step1 入力）", use_container_width=True):
                 _go(0)
         with b2:
-            if st.button("���ցiStep3 ����j", type="primary", use_container_width=True, disabled=st.session_state.final_doc is None):
+            if st.button("次へ（Step3 判定）", type="primary", use_container_width=True, disabled=st.session_state.final_doc is None):
                 _go(2)
 
         return
 
     if st.session_state.step == 2:
-        st.markdown("## Step3�b����iAgentic�j")
+        st.markdown("## Step3｜判定（Agentic）")
         opal_dict = st.session_state.opal_dict
         final_doc = st.session_state.final_doc
         st.caption(f"Policy: {st.session_state.applied_policy_display}")
         _render_warnings(final_doc.get("warnings") if isinstance(final_doc, dict) else None)
 
         if not opal_dict or not final_doc:
-            st.warning("���ʂ�����܂���BStep1�œ��͂��A��������s���Ă��������B")
-            if st.button("Step1�֖߂�", type="primary"):
+            st.warning("結果がありません。Step1で入力し、判定を実行してください。")
+            if st.button("Step1へ戻る", type="primary"):
                 _go(0)
             return
 
@@ -359,11 +359,21 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
         counts = _count_by_class(items)
         guidance_items = [it for it in items if str(it.get("classification") or "").upper() == "GUIDANCE"]
 
-        st.markdown("### ���ʃT�}���[")
+        st.markdown("### 結果サマリー")
+
+        # GUIDANCE件数が0より大きい場合は強調表示
+        if counts["GUIDANCE"] > 0:
+            st.markdown(f"""
+            <div class="guidance-card">
+                <h4 style="margin:0; color:#B45309;">⚠️ 要確認（GUIDANCE）: {counts["GUIDANCE"]}件</h4>
+                <p style="margin:0.5rem 0 0 0; color:#78350F;">人による確認が必要な行があります</p>
+            </div>
+            """, unsafe_allow_html=True)
+
         m1, m2, m3 = st.columns(3)
-        m1.metric("�v�m�F�iGUIDANCE�j", counts["GUIDANCE"])
-        m2.metric("���Y���iCAPITAL�j", counts["CAPITAL_LIKE"])
-        m3.metric("��p���iEXPENSE�j", counts["EXPENSE_LIKE"])
+        m1.metric("⚠️ 要確認", counts["GUIDANCE"], help="人による確認が必要な項目")
+        m2.metric("✅ 資産計上の可能性あり", counts["CAPITAL_LIKE"], help="固定資産として計上される可能性が高い項目")
+        m3.metric("💰 経費処理の可能性あり", counts["EXPENSE_LIKE"], help="経費として処理される可能性が高い項目")
         top_reason = None
         for it in guidance_items:
             summary = _summarize_flags(it.get("flags"))
@@ -371,37 +381,37 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
                 top_reason = summary
                 break
         if top_reason:
-            st.caption(f"��\�I�Ȓ�~���R: {top_reason}")
+            st.caption(f"🔍 代表的な停止理由: {top_reason}")
         st.info(STOP_NOTE)
 
         with st.container(border=True):
-            st.markdown("**Stop�݌v�i�f�肵�Ȃ����l�j**")
-            st.write("�E�P���^�ڐ݁^���݂ȂǁA���f������������m������ GUIDANCE �Ƃ��Ē�~���܂��B")
-            st.write("�E��~���R�� flags �Ɏc���A�ォ�猟�؂ł���悤�ɂ��܂��B")
-            st.write("�E������������i���Y�^��p�̌돈���j������A�����Ŏg����`�ɂ��܂��B")
+            st.markdown("**Stop設計（断定しない思想）**")
+            st.write("・撤去/移設/既設など、判断が割れる可能性があれば GUIDANCE として停止します。")
+            st.write("・停止理由は flags に残し、後から検証できるようにします。")
+            st.write("・最終的な判断（資産/費用の選択肢）は人が、現場で決める形にします。")
 
-        st.markdown("### ���茋�ʁi�v�m�F���ɕ\���j")
+        st.markdown("### 判定結果（要確認順に表示）")
         if counts.get("GUIDANCE", 0) > 0:
-            st.warning("�v�m�F�iGUIDANCE�j�͌딻��ł͂���܂���B���f�������\�������邽�ߒ�~���Ă��܂��B")
+            st.warning("要確認（GUIDANCE）は誤判定ではありません。判断が割れる可能性があるため停止しています。")
         rows = _to_table_rows(items)
         rows = _sort_rows_for_review(rows)
         _render_dataframe(rows)
 
         if guidance_items:
-            with st.expander("�v�m�F�iGUIDANCE�j�̗��R�i�N���b�N�ŊJ���j", expanded=False):
+            with st.expander("要確認（GUIDANCE）の理由（クリックで開く）", expanded=False):
                 options = list(range(len(guidance_items)))
                 fmt = lambda idx: f"{guidance_items[idx].get('line_no') or '-'}: { (guidance_items[idx].get('description') or '')[:40] }"
-                selected_idx = st.selectbox("�v�m�F�s��I��", options=options, format_func=fmt, key="guidance_select")
+                selected_idx = st.selectbox("要確認行を選択", options=options, format_func=fmt, key="guidance_select")
                 selected_item = guidance_items[selected_idx]
                 ev = selected_item.get("evidence") or {}
                 source_text = ev.get("source_text") if isinstance(ev, dict) else ""
                 flags = selected_item.get("flags") or []
                 flags_str = ", ".join(flags) if isinstance(flags, list) else str(flags or "")
                 with st.container(border=True):
-                    st.write(f"�s�ԍ�: {selected_item.get('line_no')}")
-                    st.write(f"����: {selected_item.get('description') or ''}")
-                    st.write(f"���ރ��x��: {selected_item.get('label_ja') or ''}")
-                    st.write(f"���R: {selected_item.get('rationale_ja') or ''}")
+                    st.write(f"行番号: {selected_item.get('line_no')}")
+                    st.write(f"内容: {selected_item.get('description') or ''}")
+                    st.write(f"分類ラベル: {selected_item.get('label_ja') or ''}")
+                    st.write(f"理由: {selected_item.get('rationale_ja') or ''}")
                     if flags_str:
                         st.write(f"flags: {flags_str}")
                     if source_text:
@@ -428,25 +438,25 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
                     guidance_rows.append(row)
                 st.dataframe(guidance_rows, hide_index=True, use_container_width=True)
         else:
-            st.caption("�v�m�F�iGUIDANCE�j�͂���܂���B")
+            st.caption("要確認（GUIDANCE）はありません。")
 
-        st.markdown("### ���ɂ�邱��")
-        st.write("1. �v�m�F�iGUIDANCE�j�̍s��D�悵�āA�l�����f���܂��B")
-        st.write("2. flags/evidence �����āA�K�v�Ȃ猩�Ϗ������ɖ߂��Ċm�F���܂��B")
-        st.write("3. ���f���ʂ�JSON�Ƃ��ĕۑ��E���L�ł��܂��B")
+        st.markdown("### 次にやること")
+        st.write("1. 要確認（GUIDANCE）の行を優先して、人が判断します。")
+        st.write("2. flags/evidence を見て、必要なら見積書原本に戻って確認します。")
+        st.write("3. 判断結果をJSONとして保存・共有できます。")
 
-        with st.expander("Opal JSON�i���f�[�^�j", expanded=False):
+        with st.expander("Opal JSON（生データ）", expanded=False):
             st.code(_safe_json_dumps(opal_dict), language="json")
 
-        with st.expander("Final JSON�i�S�́j", expanded=False):
+        with st.expander("Final JSON（全体）", expanded=False):
             st.code(_safe_json_dumps(final_doc), language="json")
 
-        st.markdown("### �o�́i�ۑ��j")
+        st.markdown("### 出力（保存）")
         final_text = _safe_json_dumps(final_doc)
         final_bytes = final_text.encode("utf-8-sig")
-        st.caption("�_�E�����[�h��UTF-8�iBOM�t���j�ŕۑ����܂��iWindows�݊��j�B")
+        st.caption("ダウンロードはUTF-8（BOM付き）で保存します（Windows互換）。")
         st.download_button(
-            label="final.json ���_�E�����[�h",
+            label="final.json をダウンロード",
             data=final_bytes,
             file_name="final.json",
             mime="application/json",
@@ -455,23 +465,23 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
 
         b1, b2 = st.columns([1, 1])
         with b1:
-            if st.button("�߂�iStep2 ���K���j", use_container_width=True):
+            if st.button("戻る（Step2 正規化）", use_container_width=True):
                 _go(1)
         with b2:
-            if st.button("Step1 ���͂�", use_container_width=True):
+            if st.button("Step1 入力へ", use_container_width=True):
                 _go(0)
 
 
 def _render_pdf_flow(policy_display: str, policy_path: Optional[str]) -> None:
-    st.markdown("## PDF Upload")
-    st.caption(f"Policy: {policy_display}")
-    uploaded_pdf = st.file_uploader("PDF���A�v���b�v", type=["pdf"], key="pdf_upload_input")
-    st.caption("USE_DOCAI / USE_LOCAL_OCR / OCR_TEXT_THRESHOLD �̐ݒ�ɊY������B�g�p�f�[�^�����Ȃ��ĉU�镶���ł��܂�.")
+    st.markdown("## PDFアップロード")
+    st.caption(f"適用ポリシー: {policy_display}")
+    uploaded_pdf = st.file_uploader("PDFファイルを選択", type=["pdf"], key="pdf_upload_input", help="見積書・請求書などのPDFをアップロードしてください")
+    st.caption("💡 PDF抽出にはDocument AI（USE_DOCAI=1）またはローカルOCR（USE_LOCAL_OCR=1）を使用できます。")
 
     col_run, col_info = st.columns([1, 1])
     with col_run:
         disabled = uploaded_pdf is None
-        if st.button("PDF��萔�l�֐i����/�~�j", type="primary", use_container_width=True, disabled=disabled):
+        if st.button("PDF→固定資産判定（進む/止まる）", type="primary", use_container_width=True, disabled=disabled):
             try:
                 saved_pdf = _save_uploaded_pdf(uploaded_pdf)
                 if saved_pdf is None:
@@ -482,19 +492,19 @@ def _render_pdf_flow(policy_display: str, policy_path: Optional[str]) -> None:
                 st.session_state.pdf_final_doc = result["final_doc"]
                 st.session_state.pdf_extract_path = str(result["extraction_path"])
                 st.session_state.pdf_final_path = str(result["final_path"])
-                st.success("PDF��萔�l�֐i�萔�j���������܂���B")
+                st.success("PDF→固定資産判定が完了しました。")
             except Exception as e:
-                st.error(f"PDF�o�͂Ɏ��s���܂���: {e}")
+                st.error(f"PDF出力に失敗しました: {e}")
     with col_info:
         if st.session_state.pdf_upload_path:
-            st.write(f"Uploads: {st.session_state.pdf_upload_path}")
+            st.write(f"📁 アップロード先: {st.session_state.pdf_upload_path}")
         if st.session_state.pdf_extract_path and st.session_state.pdf_final_path:
-            st.write(f"Results: {st.session_state.pdf_extract_path} / {st.session_state.pdf_final_path}")
+            st.write(f"📄 結果ファイル: {st.session_state.pdf_extract_path} / {st.session_state.pdf_final_path}")
 
     extraction = st.session_state.pdf_extraction
     final_doc = st.session_state.pdf_final_doc
     if not extraction or not final_doc:
-        st.info("PDF��A�v���b�v���ăo�͂���Ă��������B�萔�ʂ� results ���\���܂�.")
+        st.info("📤 PDFをアップロードして「判定を実行」ボタンを押してください。結果がここに表示されます。")
         return
 
     _render_warnings(final_doc.get("warnings") if isinstance(final_doc, dict) else None)
@@ -502,14 +512,14 @@ def _render_pdf_flow(policy_display: str, policy_path: Optional[str]) -> None:
     items = final_doc.get("line_items") or []
     counts = _count_by_class(items)
 
-    st.markdown("### ���ʃT�}���[")
+    st.markdown("### 結果サマリー")
     m1, m2, m3 = st.columns(3)
-    m1.metric("�v�m�F�iGUIDANCE�j", counts["GUIDANCE"])
-    m2.metric("���Y���iCAPITAL�j", counts["CAPITAL_LIKE"])
-    m3.metric("��p���iEXPENSE�j", counts["EXPENSE_LIKE"])
+    m1.metric("⚠️ 要確認", counts["GUIDANCE"], help="人による確認が必要な項目")
+    m2.metric("✅ 資産計上の可能性あり", counts["CAPITAL_LIKE"], help="固定資産として計上される可能性が高い項目")
+    m3.metric("💰 経費処理の可能性あり", counts["EXPENSE_LIKE"], help="経費として処理される可能性が高い項目")
     st.info(STOP_NOTE)
 
-    st.markdown("### ���茋�ʂƃG�b�W�F���X")
+    st.markdown("### 判定結果とエビデンス")
     rows = _sort_rows_for_review(_to_table_rows(items))
     _render_dataframe(rows)
 
@@ -525,7 +535,7 @@ def _render_pdf_flow(policy_display: str, policy_path: Optional[str]) -> None:
                 }
             )
     if evidence_rows:
-        st.markdown("### Evidence�i�萔�ł̎Q�Ɓj")
+        st.markdown("### エビデンス（抽出元の参照箇所）")
         st.dataframe(evidence_rows, hide_index=True, use_container_width=True)
 
     final_snippets: List[Dict[str, Any]] = []
@@ -541,52 +551,102 @@ def _render_pdf_flow(policy_display: str, policy_path: Optional[str]) -> None:
                 }
             )
     if final_snippets:
-        with st.expander("Final �̃G�b�W�F���X�i�萔��->�萔�j", expanded=False):
+        with st.expander("📎 最終判定のエビデンス（抽出結果→判定）", expanded=False):
             st.dataframe(final_snippets, hide_index=True, use_container_width=True)
 
-    with st.expander("�萔�e�L�X�g�i�y�[�W�\���j", expanded=False):
+    with st.expander("📄 抽出テキスト（ページごと）", expanded=False):
         for p in extraction.get("pages") or []:
-            st.write(f"Page {p.get('page')}: method={p.get('method')}")
+            st.write(f"ページ {p.get('page')}: 抽出方法={p.get('method')}")
             st.code(p.get("text") or "", language="text")
 
-    with st.expander("extraction JSON / final JSON", expanded=False):
-        st.caption("extraction")
+    with st.expander("🔧 JSONデータ（開発者向け）", expanded=False):
+        st.caption("抽出結果 (extraction)")
         st.code(_safe_json_dumps(extraction), language="json")
-        st.caption("final")
+        st.caption("最終判定 (final)")
         st.code(_safe_json_dumps(final_doc), language="json")
 
 
 def main() -> None:
-    st.set_page_config(page_title=APP_TITLE, layout="wide")
+    st.set_page_config(
+        page_title=APP_TITLE,
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+
+    # カスタムCSS - GUIDANCE強調とアクセシビリティ改善
+    st.markdown("""
+    <style>
+        /* GUIDANCE highlight - amber warning */
+        .guidance-card {
+            background-color: #FEF3C7;
+            border-left: 4px solid #F59E0B;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
+        }
+        /* CAPITAL_LIKE - green */
+        .capital-card {
+            background-color: #D1FAE5;
+            border-left: 4px solid #10B981;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+        }
+        /* EXPENSE_LIKE - blue */
+        .expense-card {
+            background-color: #DBEAFE;
+            border-left: 4px solid #3B82F6;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+        }
+        /* Focus visibility for accessibility */
+        button:focus, input:focus, select:focus {
+            outline: 3px solid #2563EB !important;
+            outline-offset: 2px;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .stMetric label { font-size: 0.8rem; }
+            .stMetric > div { padding: 0.5rem; }
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     _init_state()
 
-    st.title(APP_TITLE)
+    st.title(f"📊 {APP_TITLE}")
     st.caption(APP_SUB)
     st.caption(TAGLINE)
     st.info(
-        "**�Ȃ��u�~�܂� Agent�v���K�v�Ȃ̂�**\n"
-        "����ł́u�N�����m�F�����͂��v�Ƃ����O��ŏ���������܂��B\n"
-        "�����E���Z���́AAI�̌��ʂ��l�̔��f���\���ɋ^���]�T������܂���B\n"
-        "���̎d�g�݂́A�����s�������I��GUIDANCE�Œ�~���A\n"
-        "�g�^���]�T���Ȃ��󋵁h�ł�������f�肪�ʉ߂��Ȃ��悤�ɂ��܂��B"
+        "**なぜ「止まる Agent」が必要なのか**\n"
+        "現場では「誰かが確認したはず」という前提で処理されます。\n"
+        "月末・決算期は、AIの結果も人の判断も十分に疑う余裕がありません。\n"
+        "この仕組みは、疑わしい行を自動でGUIDANCEで停止し、\n"
+        "「疑う余裕がない状況」でも誤った判定が通過しないようにします。"
     )
 
-    policy_choice = st.sidebar.radio("Policy�i��ƑO��j", options=list(POLICY_OPTIONS.keys()))
+    st.sidebar.markdown("### ⚙️ 設定")
+    policy_choice = st.sidebar.radio("判定ポリシー", options=list(POLICY_OPTIONS.keys()), help="企業固有の判定ルールを選択できます")
     selected_policy_path = POLICY_OPTIONS.get(policy_choice)
     policy_path: Optional[str] = None
-    policy_display = "None"
+    policy_display = "なし"
     if selected_policy_path:
         p = Path(selected_policy_path)
         if p.exists():
             policy_path = str(p)
             policy_display = p.name
         else:
-            st.sidebar.warning(f"Policy�t�@�C�� `{p}` ��������܂���BNone�Ƃ��Ĉ����܂��B")
-    st.sidebar.caption(f"Policy: {policy_display}")
+            st.sidebar.warning(f"⚠️ ポリシーファイル `{p}` が見つかりません。デフォルト設定を使用します。")
+    st.sidebar.caption(f"📋 適用中のポリシー: {policy_display}")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📖 ヘルプ")
+    st.sidebar.caption("・**要確認**: AIが判断を停止した項目。人による確認が必要です。")
+    st.sidebar.caption("・**資産計上の可能性あり**: 固定資産として計上される可能性が高い項目。")
+    st.sidebar.caption("・**経費処理の可能性あり**: 経費として処理される可能性が高い項目。")
     st.session_state.policy_path = policy_path
     st.session_state.policy_display = policy_display
 
-    tab_json, tab_pdf = st.tabs(["Opal / JSON", "PDF Upload"])
+    tab_json, tab_pdf = st.tabs(["📋 Opal JSON入力", "📤 PDFアップロード"])
     with tab_json:
         _render_json_flow(policy_display, policy_path)
     with tab_pdf:

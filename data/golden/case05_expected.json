@@ -1,5 +1,5 @@
 {
   "decision": "GUIDANCE",
   "is_valid_document": true,
-  "reasons_contains": ["設置"]
+  "reasons_contains": ["R-AMOUNT-001"]
 }

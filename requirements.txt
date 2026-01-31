@@ -1,11 +1,20 @@
 pytest
 streamlit
 PyMuPDF
+pdfplumber
 fastapi
 python-multipart
 uvicorn
 gunicorn
 requests
+pydantic>=2.0.0
+
+# Gemini API (required for GEMINI_ENABLED=1)
+google-generativeai>=0.3.0
+
 # Optional: Google Cloud Discovery Engine (for legal citations)
 # Install only if VERTEX_SEARCH_ENABLED=1 is set:
 # google-cloud-discoveryengine>=0.11.0
+
+# Optional: Google Cloud Document AI (for PDF extraction when USE_DOCAI=1)
+google-cloud-documentai>=2.20.0

@@ -1,5 +1,5 @@
 {
-  "decision": "CAPITAL_LIKE",
+  "decision": "GUIDANCE",
   "is_valid_document": true,
-  "reasons_contains": ["増設"]
+  "reasons_contains": ["R-AMOUNT-600k"]
 }
