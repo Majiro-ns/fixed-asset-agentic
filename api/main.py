@@ -219,19 +219,26 @@ def _format_classify_response(
     # missing_fields and why_missing_matters: only for GUIDANCE
     missing_fields: List[str] = []
     why_missing_matters: List[str] = []
+    # 技術的なフラグはユーザーに見せない
+    _internal_flags = {"api_error", "parse_error", "no_keywords", "conflicting_keywords"}
     if decision == "GUIDANCE":
         # Extract missing field hints from flags and questions
         for item in guidance_items:
             flags = item.get("flags", [])
             desc = item.get("description", "")
-            # Heuristic: flags often indicate missing info
-            if flags:
-                missing_fields.extend([f"{desc}:{f}" for f in flags if isinstance(f, str)])
-                why_missing_matters.append(f"Missing information in '{desc}' prevents automatic classification")
+            # Heuristic: flags often indicate missing info (技術的フラグは除外)
+            user_flags = [f for f in flags if isinstance(f, str) and f not in _internal_flags and not f.startswith("policy:") and not f.startswith("tax_rule:")]
+            if user_flags:
+                missing_fields.extend([f"{desc}:{f}" for f in user_flags])
+                why_missing_matters.append(f"'{desc}' の追加情報があれば判定できる可能性があります")
         # Deduplicate
         missing_fields = list(set(missing_fields))
         why_missing_matters = list(set(why_missing_matters))
-    
+        # 何も情報がない場合はデフォルトメッセージ
+        if not missing_fields:
+            missing_fields = ["この支出の目的（修繕 or 新規購入）"]
+            why_missing_matters = ["支出目的により固定資産か経費かの判断が変わります"]
+
     # trace: execution steps
     if trace_steps is None:
         trace_steps = ["extract", "parse", "rules", "format"]

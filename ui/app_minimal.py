@@ -38,6 +38,12 @@ def _format_reason_for_display(reason: str) -> Optional[str]:
             return None
         if "policy:" in reason:
             return None
+        if "api_error" in reason or "parse_error" in reason:
+            return None
+        return None
+
+    # APIエラー系のメッセージは非表示
+    if "Gemini API エラー" in reason or "Gemini レスポンス解析エラー" in reason:
         return None
 
     # 通常の判定理由はそのまま表示
@@ -87,12 +93,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 固定資産判定システム")
-st.caption("見積書・請求書を「資産」か「経費」に自動分類します")
+st.markdown("## 📊 固定資産判定システム")
 
-# Sidebar: demo case selector
+# Sidebar
 with st.sidebar:
-    # サーバーURLは固定（ユーザーに見せない）
+    # サーバーURLは固定
     service_url = "https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app"
 
     st.markdown("### サンプルデータ")
@@ -106,17 +111,24 @@ with st.sidebar:
     else:
         selected_demo = "-- サンプルを選択 --"
 
+    # 開発者向けオプション（折りたたみ）
     st.markdown("---")
-    st.markdown("### 読み取りモード")
-    pdf_mode = st.radio(
-        "読み取り方式を選択",
-        options=["通常モード", "高精度モード"],
-        index=0,
-        key="pdf_mode",
-        help="複雑なPDFは「高精度モード」を選んでください"
-    )
-    if pdf_mode == "高精度モード":
-        st.caption("手書き・複雑な表・様々な様式のPDFに対応します")
+    with st.expander("⚙️ 詳細設定", expanded=False):
+        pdf_mode = st.radio(
+            "読み取りモード",
+            options=["通常モード", "高精度モード"],
+            index=0,
+            key="pdf_mode",
+            help="複雑なPDFは「高精度モード」を選択"
+        )
+        if pdf_mode == "高精度モード":
+            st.caption("手書き・複雑な表に対応")
+
+        # 開発者向けJSON表示
+        if st.session_state.get("result"):
+            st.markdown("---")
+            st.markdown("**APIレスポンス**")
+            st.json(st.session_state.result)
 
 
 # Initialize session state
@@ -141,86 +153,56 @@ if "demo_selector" in st.session_state:
         st.session_state.initial_opal = None
         st.session_state.last_demo = current_demo
 
-# Input section
-st.markdown("## 見積書をアップロード")
-
-# PDF Upload (メインの入力方法)
-uploaded_pdf = st.file_uploader("PDFファイルをドラッグ＆ドロップ", type=["pdf"], key="pdf_upload")
-if uploaded_pdf:
-    st.success(f"📄 {uploaded_pdf.name} を読み込みました")
-
-# Opal JSON input (開発者向け・折りたたみ)
+# Input section - コンパクト
 opal_json_text = ""
-if not uploaded_pdf:
-    with st.expander("テキストで入力（開発者向け）", expanded=False):
-        # Load demo case if selected
-        if selected_demo != "-- サンプルを選択 --" and demo_cases:
-            demo_path = demo_cases_dir / selected_demo
-            try:
-                demo_json = json.loads(demo_path.read_text(encoding="utf-8"))
-                opal_json_text = st.text_area(
-                    "見積書データ",
-                    height=150,
-                    value=json.dumps(demo_json, ensure_ascii=False, indent=2),
-                    key="opal_input",
-                )
-            except Exception:
-                opal_json_text = st.text_area(
-                    "見積書データ",
-                    height=150,
-                    placeholder='{"line_items": [{"item_description": "サーバー設置工事", "amount": 500000}]}',
-                    key="opal_input",
-                )
-        else:
-            opal_json_text = st.text_area(
-                "見積書データ",
-                height=150,
-                placeholder='{"line_items": [{"item_description": "サーバー設置工事", "amount": 500000}]}',
-                key="opal_input",
-            )
+if selected_demo != "-- サンプルを選択 --" and demo_cases:
+    demo_path = demo_cases_dir / selected_demo
+    try:
+        demo_json = json.loads(demo_path.read_text(encoding="utf-8"))
+        opal_json_text = json.dumps(demo_json, ensure_ascii=False)
+        st.info(f"📋 {selected_demo}")
+    except Exception:
+        pass
 
-# Classify button (for Opal JSON)
-if st.button("判定を実行", type="primary", use_container_width=True, disabled=bool(uploaded_pdf)):
-    if not opal_json_text.strip():
-        st.error("見積書データを入力してください")
-    else:
+# PDF Upload（コンパクト）
+uploaded_pdf = st.file_uploader("PDFをアップロード", type=["pdf"], key="pdf_upload", label_visibility="collapsed")
+if uploaded_pdf:
+    st.caption(f"📄 {uploaded_pdf.name}")
+
+if not uploaded_pdf and not opal_json_text:
+    st.caption("PDFをアップロード、またはサイドバーでサンプル選択")
+
+# 判定ボタン（サンプルJSON用）
+if opal_json_text and not uploaded_pdf:
+    if st.button("🔍 判定を実行", type="primary", use_container_width=True):
         try:
             opal_json = json.loads(opal_json_text)
             st.session_state.initial_opal = opal_json.copy()
-            
-            # Call Cloud Run API
+
             classify_url = f"{service_url}/classify"
             payload = {"opal_json": opal_json}
-            
-            with st.spinner("判定中...しばらくお待ちください"):
-                response = requests.post(
-                    classify_url,
-                    json=payload,
-                    timeout=15,
-                )
+
+            with st.spinner("判定中..."):
+                response = requests.post(classify_url, json=payload, timeout=15)
                 response.raise_for_status()
                 result_data = response.json()
-            
-            # Store result (preserve previous for comparison)
+
             if st.session_state.result:
                 st.session_state.prev_result = st.session_state.result.copy()
             st.session_state.result = result_data
             st.session_state.answers = {}
-            
             st.rerun()
-            
-        except json.JSONDecodeError:
-            st.error("入力データの形式が正しくありません。正しい形式で入力してください。")
-        except requests.exceptions.Timeout:
-            st.error("タイムアウトしました。しばらく経ってから再度お試しください。")
-        except requests.exceptions.RequestException:
-            st.error("サーバーとの通信に失敗しました。しばらく経ってから再度お試しください。")
-        except Exception:
-            st.error("判定処理に失敗しました。しばらく経ってから再度お試しください。")
 
-# PDF Classify button (if PDF uploaded)
+        except json.JSONDecodeError:
+            st.error("データ形式エラー")
+        except requests.exceptions.RequestException:
+            st.error("通信エラー。しばらく経ってから再度お試しください。")
+        except Exception:
+            st.error("判定に失敗しました。")
+
+# PDF判定ボタン
 if uploaded_pdf:
-    if st.button("PDFを判定", type="primary", use_container_width=True):
+    if st.button("🔍 PDFを判定", type="primary", use_container_width=True):
         try:
             # Call Cloud Run API /classify_pdf
             classify_pdf_url = f"{service_url}/classify_pdf"
@@ -319,148 +301,19 @@ if st.session_state.result:
 
         st.markdown("---")
     
-    st.markdown("## 判定結果")
-
-    # Decision badge with WIN+1 fields - prominent at top
+    # 判定結果
     decision = result.get("decision", "UNKNOWN")
+    confidence = result.get("confidence", 0.0)
 
-    # Decision display with visual distinction - 高卒事務でもわかる説明
-    decision_config = {
-        "CAPITAL_LIKE": ("✅", "資産計上の可能性あり", "#10B981", "10万円以上の設備投資など、固定資産として計上する可能性が高い項目です"),
-        "EXPENSE_LIKE": ("💰", "経費処理の可能性あり", "#3B82F6", "消耗品や修繕費など、経費として処理する可能性が高い項目です"),
-        "GUIDANCE": ("⚠️", "要確認", "#F59E0B", ""),  # 止まるAI - 判定せず確認を求める
-    }
-    icon, label, color, desc = decision_config.get(decision, ("❓", "不明", "#6B7280", "判定できませんでした"))
-
-    # Large decision display with color coding
-    # GUIDANCEの場合は「止まる」を強調 - 判定を出さず確認を求める
+    # GUIDANCEの場合：判定結果＋支出目的選択を一画面に
     if decision == "GUIDANCE":
-        # 「止まるAI」のコンセプトを体現
         st.markdown(f"""
-        <div style="background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem;">
-            <h2 style="margin: 0; color: #B45309;">⚠️ 要確認</h2>
-            <p style="margin: 0.8rem 0 0 0; font-size: 1.1rem; color: #92400E; font-weight: 500;">AIの判断では確定できません</p>
-            <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #78350F;">追加情報をいただければ、判定が可能になります。</p>
+        <div style="background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 1rem; border-radius: 0.5rem; margin-bottom: 0.5rem;">
+            <h3 style="margin: 0; color: #B45309;">⚠️ 要確認 - この支出の目的を教えてください</h3>
         </div>
         """, unsafe_allow_html=True)
-    else:
-        # CAPITAL_LIKE / EXPENSE_LIKE の場合
-        # 確信度90%超なら免責不要、それ以下なら免責表示
-        confidence = result.get("confidence", 0.0)
-        if confidence > 0.9:
-            # 高確信度: 免責不要
-            st.markdown(f"""
-            <div style="background-color: {color}20; border-left: 4px solid {color}; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
-                <h3 style="margin: 0; color: {color};">{icon} 判定: {label}</h3>
-                <p style="margin: 0.5rem 0 0 0; color: #374151;">{desc}</p>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            # 確信度90%以下: 免責表示追加
-            st.markdown(f"""
-            <div style="background-color: {color}20; border-left: 4px solid {color}; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
-                <h3 style="margin: 0; color: {color};">{icon} 判定: {label}</h3>
-                <p style="margin: 0.5rem 0 0 0; color: #374151;">{desc}</p>
-                <p style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #6B7280;">※最終判断は税理士・経理担当者にご確認ください。</p>
-            </div>
-            """, unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        confidence = result.get("confidence", 0.0)
-        st.metric("判定の確かさ", f"{confidence:.0%}")
-    with col2:
-        is_valid = result.get("is_valid_document", False)
-        st.metric("データ形式", "OK" if is_valid else "要確認")
-
-    # 耐用年数表示（CAPITAL_LIKEの場合のみ）
-    useful_life = result.get("useful_life")
-    if decision == "CAPITAL_LIKE" and useful_life and useful_life.get("useful_life_years", 0) > 0:
-        years = useful_life.get("useful_life_years")
-        category = useful_life.get("category", "")
-        subcategory = useful_life.get("subcategory", "")
-        legal_basis = useful_life.get("legal_basis", "")
-        ul_confidence = useful_life.get("confidence", 0.0)
-
-        st.markdown("### 📅 法定耐用年数")
-        ul_col1, ul_col2 = st.columns(2)
-        with ul_col1:
-            st.metric("耐用年数", f"{years}年")
-        with ul_col2:
-            st.metric("判定の確かさ", f"{ul_confidence:.0%}")
-
-        if category or subcategory:
-            st.write(f"**資産区分**: {category}" + (f" / {subcategory}" if subcategory else ""))
-        if legal_basis:
-            st.caption(f"根拠: {legal_basis}")
-
-    # Evidence panel - evidence-first, prominent (moved before Reasons)
-    evidence = result.get("evidence", [])
-    if evidence:
-        st.markdown("### 判定根拠（なぜこの結果になったか）")
-        for i, ev in enumerate(evidence):
-            with st.expander(f"明細 {ev.get('line_no', '?')}: {ev.get('description', '')}", expanded=(i == 0)):
-                if ev.get("source_text"):
-                    st.write("**元のテキスト:**")
-                    st.code(ev["source_text"], language="text")
-    
-    # Citations (Google Cloud: Vertex AI Search results)
-    citations = result.get("citations", [])
-    st.markdown("### 関連法令・規則（参考情報）")
-    if citations:
-        st.info("関連する法令・ガイドラインが見つかりました")
-        for i, citation in enumerate(citations):
-            with st.expander(f"参照 {i+1}: {citation.get('title', '無題')}", expanded=(i == 0)):
-                if citation.get("snippet"):
-                    st.write("**抜粋:**")
-                    st.code(citation["snippet"], language="text")
-                if citation.get("uri"):
-                    st.markdown(f"**出典:** [{citation['uri']}]({citation['uri']})")
-    else:
-        st.caption("※関連法令の自動検索は現在準備中です")
-    
-    # Reasons
-    reasons = result.get("reasons", [])
-    if reasons:
-        # 技術的なフラグを人間向け説明に変換
-        display_reasons = []
-        seen = set()
-        for reason in reasons:
-            formatted = _format_reason_for_display(reason)
-            if formatted and formatted not in seen:
-                display_reasons.append(formatted)
-                seen.add(formatted)
-
-        if display_reasons:
-            st.markdown("#### 判定理由")
-            for reason in display_reasons:
-                st.write(f"- {reason}")
-    
-    # GUIDANCE: Questions and answers (agentic loop)
-    if decision == "GUIDANCE":
-        # Prominent "Agent needs info" panel at top - 「聞く」を強調
-        st.markdown("---")
-        st.markdown("### 追加情報をお聞きします")
-        st.warning("AIが判断するために、以下の情報が必要です。")
-
-        missing_fields = result.get("missing_fields", [])
-        why_missing = result.get("why_missing_matters", [])
-
-        # 不足情報をシンプルに表示
-        if missing_fields:
-            st.markdown("#### 不足している情報")
-            for mf in missing_fields:
-                st.write(f"• {mf}")
-
-        # Why missing matters (prominent)
-        if why_missing:
-            st.markdown("#### なぜこの情報が必要か")
-            for why in why_missing[:3]:  # Limit to top 3
-                st.write(f"• {why}")
-
-        # 用途選択（クイック選択）
-        st.markdown("#### この支出の目的を選んでください")
-
+        # 支出目的選択ボタン（判定直後に表示）
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             if st.button("🔧 修繕・メンテナンス", use_container_width=True, key="btn_repair"):
@@ -471,79 +324,68 @@ if st.session_state.result:
                 st.session_state.answers["purpose"] = "upgrade"
                 st.rerun()
 
-        # 選択状態を表示
+        # 選択後の再判定
         if st.session_state.answers.get("purpose"):
             purpose_label = "修繕・メンテナンス" if st.session_state.answers["purpose"] == "repair" else "新規購入・設備増強"
-            st.success(f"選択中: {purpose_label}")
-
-        # Questions from API response + missing_fields as form inputs
-        questions = result.get("questions", [])
-        with st.form("guidance_answers", clear_on_submit=False):
-            st.markdown("#### 追加情報を入力")
-
-            # Build form inputs from missing_fields
-            form_answers = {}
-            for i, mf in enumerate(missing_fields):
-                answer = st.text_input(
-                    f"**{mf}**",
-                    value=st.session_state.answers.get(mf, ""),
-                    key=f"form_{i}",
-                    help=why_missing[i] if i < len(why_missing) else "追加の情報を入力してください",
-                )
-                if answer:
-                    form_answers[mf] = answer
-
-            # Also show questions from API if available
-            if questions:
-                for i, question in enumerate(questions):
-                    q_key = f"q_{i}"
-                    answer = st.text_input(
-                        f"質問{i+1}: {question}",
-                        value=st.session_state.answers.get(q_key, ""),
-                        key=f"question_{i}",
-                    )
-                    if answer:
-                        form_answers[q_key] = answer
-
-            submitted = st.form_submit_button("追加情報をもとに再判定", type="primary")
-            
-            if submitted:
-                # Update session state with form answers
-                st.session_state.answers.update(form_answers)
-
-                if st.session_state.initial_opal is None:
-                    st.error("元のデータが見つかりません。最初から判定をやり直してください。")
-                else:
+            st.success(f"選択: {purpose_label}")
+            if st.button("🔄 この情報で再判定", type="primary", use_container_width=True):
+                if st.session_state.initial_opal:
                     try:
-                        # Call Cloud Run API with answers
                         classify_url = f"{service_url}/classify"
-                        payload = {
-                            "opal_json": st.session_state.initial_opal,
-                            "answers": st.session_state.answers,
-                        }
-
-                        with st.spinner("再判定中...しばらくお待ちください"):
-                            response = requests.post(
-                                classify_url,
-                                json=payload,
-                                timeout=15,
-                            )
+                        payload = {"opal_json": st.session_state.initial_opal, "answers": st.session_state.answers}
+                        with st.spinner("再判定中..."):
+                            response = requests.post(classify_url, json=payload, timeout=15)
                             response.raise_for_status()
                             result_data = response.json()
-                        
-                        # Store previous result for comparison
                         st.session_state.prev_result = st.session_state.result.copy()
                         st.session_state.result = result_data
-                        
                         st.rerun()
-                        
-                    except requests.exceptions.Timeout:
-                        st.error("タイムアウトしました。しばらく経ってから再度お試しください。")
-                    except requests.exceptions.RequestException:
-                        st.error("サーバーとの通信に失敗しました。しばらく経ってから再度お試しください。")
                     except Exception:
-                        st.error("再判定に失敗しました。しばらく経ってから再度お試しください。")
-    
-    # Full result JSON (collapsible) - 審査員向け
-    with st.expander("詳細データ（開発者向け）", expanded=False):
-        st.json(result)
+                        st.error("再判定に失敗しました。")
+
+    else:
+        # CAPITAL_LIKE / EXPENSE_LIKE
+        decision_config = {
+            "CAPITAL_LIKE": ("✅", "資産計上の可能性あり", "#10B981"),
+            "EXPENSE_LIKE": ("💰", "経費処理の可能性あり", "#3B82F6"),
+        }
+        icon, label, color = decision_config.get(decision, ("❓", "不明", "#6B7280"))
+
+        st.markdown(f"""
+        <div style="background-color: {color}20; border-left: 4px solid {color}; padding: 1rem; border-radius: 0.5rem; margin-bottom: 0.5rem;">
+            <h3 style="margin: 0; color: {color};">{icon} {label}</h3>
+            <p style="margin: 0.3rem 0 0 0; font-size: 0.9rem; color: #6B7280;">確信度: {confidence:.0%}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # 耐用年数（CAPITAL_LIKEのみ、コンパクト表示）
+        useful_life = result.get("useful_life")
+        if decision == "CAPITAL_LIKE" and useful_life and useful_life.get("useful_life_years", 0) > 0:
+            years = useful_life.get("useful_life_years")
+            st.caption(f"📅 法定耐用年数: {years}年")
+
+    # 判定理由（コンパクト表示）
+    reasons = result.get("reasons", [])
+    if reasons:
+        display_reasons = []
+        seen = set()
+        for reason in reasons:
+            formatted = _format_reason_for_display(reason)
+            if formatted and formatted not in seen:
+                display_reasons.append(formatted)
+                seen.add(formatted)
+
+        if display_reasons:
+            st.markdown("**判定理由:**")
+            for reason in display_reasons:
+                st.caption(f"• {reason}")
+
+    # 詳細情報は折りたたみ（サイドバーに移動も検討）
+    evidence = result.get("evidence", [])
+    if evidence:
+        with st.expander("判定根拠", expanded=False):
+            for ev in evidence:
+                desc = ev.get('description', '')
+                src = ev.get('source_text', '')
+                if src:
+                    st.caption(f"{desc}: {src}")
