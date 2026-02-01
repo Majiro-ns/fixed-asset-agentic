@@ -56,7 +56,7 @@ st.markdown("""
 
 st.title("📊 固定資産判定システム")
 st.caption("見積書・請求書を「資産」か「経費」か「要確認」に自動分類します")
-st.info("💡 **ヒント:** 「要確認」と表示された場合は、AIが判断に迷った項目です。エラーではありません。担当者の確認が必要な箇所を示しています。")
+st.info("「要確認」と表示された場合は、自動判定ができなかった項目です。エラーではありません。担当者の確認が必要な箇所を示しています。")
 
 # Sidebar: Service URL and demo case selector
 with st.sidebar:
@@ -79,7 +79,19 @@ with st.sidebar:
         selected_demo = "選択しない"
 
     st.markdown("---")
-    st.markdown("### PDFアップロード（任意）")
+    st.markdown("### PDF読み取りモード")
+    pdf_mode = st.radio(
+        "読み取り方式を選択",
+        options=["標準（テキスト抽出）", "Gemini Vision（高精度）"],
+        index=0,
+        key="pdf_mode",
+        help="手書きや複雑なレイアウトのPDFも読み取れます"
+    )
+    if pdf_mode == "Gemini Vision（高精度）":
+        st.caption("高精度モード: 手書き・複雑な表・様々な様式のPDFに対応")
+
+    st.markdown("---")
+    st.markdown("### PDFアップロード")
     st.caption("PDFファイルを直接アップロードして判定できます。")
 
 # Initialize session state
@@ -195,12 +207,18 @@ if uploaded_pdf:
             # Reset file pointer
             uploaded_pdf.seek(0)
 
-            with st.spinner("PDFを解析中...しばらくお待ちください"):
+            # Determine extraction mode from sidebar selection
+            use_gemini_vision = st.session_state.get("pdf_mode", "標準（テキスト抽出）") == "Gemini Vision（高精度）"
+
+            with st.spinner("PDFを解析中...しばらくお待ちください" + ("（Gemini Vision）" if use_gemini_vision else "")):
                 files = {"file": (uploaded_pdf.name, uploaded_pdf, "application/pdf")}
+                # Pass extraction mode as query parameter
+                params = {"use_gemini_vision": "1"} if use_gemini_vision else {}
                 response = requests.post(
                     classify_pdf_url,
                     files=files,
-                    timeout=30,  # PDF processing may take longer
+                    params=params,
+                    timeout=60 if use_gemini_vision else 30,  # Gemini Vision may take longer
                 )
                 response.raise_for_status()
                 result_data = response.json()
@@ -325,7 +343,7 @@ if st.session_state.result:
     decision_config = {
         "CAPITAL_LIKE": ("✅", "資産計上の可能性あり", "#10B981", "10万円以上の設備投資など、固定資産として計上する可能性が高い項目です"),
         "EXPENSE_LIKE": ("💰", "経費処理の可能性あり", "#3B82F6", "消耗品や修繕費など、経費として処理する可能性が高い項目です"),
-        "GUIDANCE": ("⚠️", "要確認（担当者の判断が必要）", "#F59E0B", "AIが自動判定できませんでした。経理担当者による確認が必要です"),
+        "GUIDANCE": ("⚠️", "要確認（担当者の判断が必要）", "#F59E0B", "自動判定できませんでした。経理担当者による確認が必要です"),
     }
     icon, label, color, desc = decision_config.get(decision, ("❓", "不明", "#6B7280", "判定できませんでした"))
 
@@ -340,7 +358,7 @@ if st.session_state.result:
     col1, col2, col3 = st.columns(3)
     with col1:
         confidence = result.get("confidence", 0.0)
-        st.metric("確信度（AIの自信）", f"{confidence:.2f}")
+        st.metric("確信度", f"{confidence:.2f}")
     with col2:
         is_valid = result.get("is_valid_document", False)
         st.metric("データ形式", "正常" if is_valid else "異常あり")
@@ -395,8 +413,8 @@ if st.session_state.result:
     if decision == "GUIDANCE":
         # Prominent "Agent needs info" panel at top
         st.markdown("---")
-        st.markdown("### 🤖 追加情報が必要です")
-        st.info("正確な判定を行うために、以下の情報を入力してください。AIが判断に迷った項目です。")
+        st.markdown("### 追加情報が必要です")
+        st.info("正確な判定を行うために、以下の情報を入力してください。自動判定できなかった項目です。")
 
         missing_fields = result.get("missing_fields", [])
         why_missing = result.get("why_missing_matters", [])

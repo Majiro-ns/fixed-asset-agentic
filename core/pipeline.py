@@ -1,4 +1,3 @@
-print("[DEBUG] pipeline.py loaded")
 import datetime
 import json
 from pathlib import Path

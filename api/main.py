@@ -357,12 +357,16 @@ async def classify(request: ClassifyRequest) -> ClassifyResponse:
 async def classify_pdf(
     file: UploadFile = File(...),
     policy_path: Optional[str] = None,
+    use_gemini_vision: Optional[str] = None,
 ) -> ClassifyResponse:
     """
     Classify fixed asset items from uploaded PDF file.
-    
+
     Feature-flagged: Only active when PDF_CLASSIFY_ENABLED=1.
     When disabled, returns 400 with clear message (no crash).
+
+    Query Parameters:
+        use_gemini_vision: "1" to force Gemini Vision extraction (requires GEMINI_PDF_ENABLED=1)
     """
     # Feature flag check
     if not _bool_env("PDF_CLASSIFY_ENABLED", False):
@@ -387,8 +391,10 @@ async def classify_pdf(
         
         try:
             # Extract PDF using core functions (core/* not modified, only imported)
-            extraction = extract_pdf(tmp_path)
-            trace_steps.append("extract")
+            # Pass use_gemini_vision flag if requested via query param
+            force_gemini = use_gemini_vision == "1"
+            extraction = extract_pdf(tmp_path, use_gemini_vision=force_gemini)
+            trace_steps.append("extract_gemini" if force_gemini else "extract")
             
             # Convert extraction to Opal-like format
             opal_like = extraction_to_opal(extraction)

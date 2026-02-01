@@ -97,7 +97,7 @@ CMD ["sh", "-c", "exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8080}"
 - FastAPI
 - uvicorn
 - PyMuPDF
-- streamlit
+- streamlit（requirements.txt に含む。API本体は未使用）
 - google-cloud-documentai（オプション）
 
 ---

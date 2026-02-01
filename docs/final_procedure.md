@@ -50,7 +50,7 @@ C:\Users\owner\Desktop\fixed-asset-ashigaru\
 | ファイル | 確認ポイント |
 |----------|-------------|
 | `core/classifier.py` | 3値判定（CAPITAL_LIKE/EXPENSE_LIKE/GUIDANCE）のロジック |
-| `core/normalizer.py` | 正規化ルールの一貫性 |
+| `core/adapter.py` | 正規化ルールの一貫性 |
 | `api/main.py` | APIエンドポイントの動作 |
 | `policies/*.json` | ポリシー設定の整合性 |
 

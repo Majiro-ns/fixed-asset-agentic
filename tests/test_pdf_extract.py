@@ -57,6 +57,55 @@ def test_run_pdf_pipeline_creates_outputs(monkeypatch):
     assert final_doc.get("warnings") == results["extraction"]["meta"].get("warnings")
 
 
+def test_extraction_to_opal_parses_tables():
+    """Line items are parsed from extracted tables when available."""
+    extraction = {
+        "meta": {"filename": "test.pdf"},
+        "pages": [
+            {
+                "page": 1,
+                "text": "見積書",
+                "tables": [
+                    [
+                        ["品名", "数量", "単価", "金額"],
+                        ["業務用プリンター", "1", "50000", "50000"],
+                        ["据付工事", "1", "10000", "10000"],
+                    ]
+                ],
+                "evidence": [{"page": 1, "method": "text", "snippet": "test"}],
+            }
+        ],
+    }
+    opal = extraction_to_opal(extraction)
+    items = opal["line_items"]
+    assert len(items) >= 2
+    descs = [it.get("description", "") for it in items]
+    assert "業務用プリンター" in descs
+    assert "据付工事" in descs
+    amounts = [it.get("amount") for it in items if it.get("amount") is not None]
+    assert 50000 in amounts
+    assert 10000 in amounts
+
+
+def test_extraction_to_opal_parses_text_fallback():
+    """Line items are parsed from text when no tables."""
+    extraction = {
+        "meta": {"filename": "test.pdf"},
+        "pages": [
+            {
+                "page": 1,
+                "text": "工事代金 1 式 300000 円\n諸経費 1 式 50000 円",
+                "tables": [],
+                "evidence": [{"page": 1, "method": "text", "snippet": "test"}],
+            }
+        ],
+    }
+    opal = extraction_to_opal(extraction)
+    items = opal["line_items"]
+    assert len(items) >= 1
+    assert any(it.get("amount") == 300000 or it.get("amount") == 50000 for it in items)
+
+
 def test_extract_pdf_emits_warning_for_short_text(monkeypatch, tmp_path):
     monkeypatch.setenv("USE_LOCAL_OCR", "false")
     dummy_pdf = tmp_path / "blank.pdf"

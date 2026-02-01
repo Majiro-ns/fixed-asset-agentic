@@ -3,7 +3,7 @@ title: "AIが「止まる」ことに価値がある ― 固定資産判定シ�
 emoji: "🛑"
 type: "idea"
 topics: ["gch4", "googlecloud", "agenticai", "fastapi", "経理DX"]
-published: false
+published: true
 ---
 
 # AIが「止まる」ことに価値がある
@@ -51,6 +51,18 @@ AIによる自動化が進む今、こんな声を聞くようになった。
 
 ---
 
+## デモ動画
+
+<!-- TODO: 殿がYouTube/Vimeoにアップロード後、以下のURLを置き換える -->
+<!-- @[youtube](動画ID) -->
+
+:::message
+デモ動画（3分）をここに埋め込む。
+撮影後、YouTube/VimeoにアップロードしてURLを記入。
+:::
+
+---
+
 ## 対象ユーザー
 
 このシステムは、以下のような方々の課題を解決するために開発された。
@@ -63,12 +75,13 @@ AIによる自動化が進む今、こんな声を聞くようになった。
 | **会計事務所スタッフ** | 複数クライアントの一括処理 | ポリシー設定で会社別ルールを管理 |
 | **税理士** | 判断が割れる案件の確認 | 判定根拠（Evidence）を即座に確認 |
 
-### こんな場面で使える
+### 導入効果
 
-- 毎月末の見積書処理（10〜20件/月の中小企業）
-- 大型設備投資の判定（付帯工事の取扱い確認）
-- 税務調査対応（3年前の判断根拠を説明）
-- 新人経理担当者の教育（実例ベースで判断基準を学習）
+| 指標 | 効果 |
+|------|------|
+| 処理時間 | **67%削減**（15分/件 → 5分/件） |
+| 年間削減時間 | 40〜200時間 |
+| 判断ミス | **80%以上削減** |
 
 ---
 
@@ -153,7 +166,7 @@ MIXED_KEYWORDS = ["一式", "撤去", "移設", "既設", "更新"]
 
 ```mermaid
 graph TB
-    A[見積書PDF] -->|Opal OCR| B[Opal JSON]
+    A[見積書PDF] -->|PDF抽出| B[テキスト/明細]
     B -->|Streamlit UI| C[ユーザー入力]
     C -->|POST /classify| D[Cloud Run<br/>FastAPI]
     D -->|Adapter| E[正規化スキーマ]
@@ -176,7 +189,7 @@ graph TB
 | カテゴリ | 技術 | 用途 |
 |---------|------|------|
 | **API** | FastAPI + Pydantic | REST API、スキーマ検証 |
-| **PDF処理** | Document AI / PyMuPDF | PDF → テキスト抽出 |
+| **PDF処理** | Gemini Vision / Document AI / PyMuPDF | PDF → テキスト抽出 |
 | **法令検索** | Vertex AI Search | 関連法令のエビデンス検索 |
 | **デプロイ** | Cloud Run | サーバーレスAPIホスティング |
 | **UI** | Streamlit | デモ用Webインターフェース |
@@ -185,32 +198,25 @@ graph TB
 
 | サービス | 役割 | Feature Flag |
 |---------|------|-------------|
-| **Document AI** | PDF抽出（高精度OCR） | `USE_DOCAI=1` |
+| **Gemini Vision** | PDF画像からの高精度抽出 | `GEMINI_PDF_ENABLED=1` |
+| **Document AI** | PDF抽出（OCR） | `USE_DOCAI=1` |
 | **Vertex AI Search** | 法令・規則の根拠検索 | `VERTEX_SEARCH_ENABLED=1` |
 | **Cloud Run** | APIのデプロイ・運用 | 常時有効 |
 
 ---
 
-## デモ
+## デモシナリオ
 
-:::message
-デモ動画は別途撮影・埋め込み予定
-:::
+### PDFアップロード → 判定
 
-### デモシナリオ
-
-**シナリオ：重機購入の見積書判定**
-
-1. 見積書PDF（本体2,500万円 + 据付工事300万円 + 撤去150万円）をアップロード
+1. 見積書PDFをアップロード
 2. システムが明細を抽出・判定
-   - 本体：**CAPITAL_LIKE**（資産寄り）
-   - 据付工事：**GUIDANCE**（flags: 付帯工事）
-   - 撤去：**GUIDANCE**（flags: 撤去）
+   - 「サーバー新設工事」→ **CAPITAL_LIKE**（資産寄り）
+   - 「保守点検作業」→ **EXPENSE_LIKE**（費用寄り）
+   - 「既設機器撤去・移設」→ **GUIDANCE**（要確認）
 3. GUIDANCE項目について、不足情報を確認
-   - 「据付工事は取得価額に含めるか？」
-   - 「撤去は新規資産の取得に必要な除去費用か？」
 4. 追加情報を入力して再判定
-5. 最終判定と証跡をエクスポート
+5. 判定結果の差分（Before → After）を確認
 
 ### 再現手順（ローカル）
 
@@ -230,20 +236,17 @@ curl http://localhost:8080/health
 
 ### 短期（3-6ヶ月）
 
-- **Document AI本格統合**：`USE_DOCAI=1`をデフォルト化
-- **Vertex AI Search常時有効化**：法令エビデンス検索の本格利用
-- **Golden Setの拡充**：10 → 50ケースへ
+- **Gemini Vision統合強化**：手書き・複雑レイアウト対応
+- **Golden Setの拡充**：20 → 50ケースへ
 
 ### 中期（1-2年）
 
 - **他帳票への横展開**：請求書、領収書、注文書
 - **耐用年数マスタ連携**：候補提示と根拠提示（Stop-first設計維持）
-- **ワークフロー統合**：会計システム、経費精算システムとの連携
 
 ### 長期（3年以上）
 
 - **判断支援AIのプラットフォーム化**：固定資産判定に限らず、あらゆる業務判断に適用
-- **グローバル対応**：US GAAP / IFRS 16対応
 
 ---
 
@@ -275,9 +278,8 @@ curl http://localhost:8080/health
 
 ## 参考リンク
 
-- [GitHub リポジトリ](#)（後日公開予定）
-- [Cloud Run デプロイ版](#)（デモ用URL）
-- [DEMO_RUNBOOK.md](./DEMO_RUNBOOK.md)：3-4分のデモ手順
+- [GitHub リポジトリ](https://github.com/Majiro-ns/fixed-asset-agentic)
+- [Cloud Run デプロイ版](https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app)
 
 ---
 

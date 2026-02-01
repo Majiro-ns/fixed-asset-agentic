@@ -122,8 +122,8 @@ streamlit run ui/app_minimal.py
 
 ```bash
 # 1. リポジトリをクローン
-git clone https://github.com/your-org/fixed-asset-agentic-repo.git
-cd fixed-asset-agentic-repo
+git clone https://github.com/Majiro-ns/fixed-asset-agentic.git
+cd fixed-asset-agentic
 
 # 2. 依存関係をインストール
 pip install -r requirements.txt

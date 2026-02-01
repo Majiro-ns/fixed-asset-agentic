@@ -89,7 +89,7 @@
 ### 本プロジェクトでの対応
 
 #### 1. コード
-- **GitHubリポジトリ**: 本リポジトリ（`fixed-asset-agentic-repo`）
+- **GitHubリポジトリ**: 本リポジトリ（`fixed-asset-agentic`）
 - **主要コンポーネント**:
   - FastAPI（`api/main.py`）: Cloud Run上で動作
   - Streamlit UI（`ui/app_minimal.py`）: デモ用Webインターフェース
