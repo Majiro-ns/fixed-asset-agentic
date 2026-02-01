@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data (uploads only)
+data/results/
+data/uploads/
+
+# Git
+.git/
+.gitignore
+
+# Tests
+tests/
+.pytest_cache/
+
+# API (not needed for UI)
+api/
+core/
+policies/
+requirements.txt
+Dockerfile
+
+# Scripts
+scripts/
+
+# Other
+*.md
+!README.md

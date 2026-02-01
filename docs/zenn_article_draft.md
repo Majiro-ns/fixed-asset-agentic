@@ -209,21 +209,24 @@ MIXED_KEYWORDS = ["一式", "撤去", "移設", "既設", "更新"]
 
 ```mermaid
 graph TB
-    A[見積書PDF] -->|PDF抽出| B[テキスト/明細]
-    B -->|Streamlit UI| C[ユーザー入力]
-    C -->|POST /classify| D[Cloud Run<br/>FastAPI]
-    D -->|Adapter| E[正規化スキーマ]
+    User[ユーザー] -->|ブラウザアクセス| UI[UI<br/>Cloud Run<br/>Streamlit]
+    UI -->|見積書PDF| UI
+    UI -->|POST /classify| API[API<br/>Cloud Run<br/>FastAPI]
+    API -->|PDF解析| Gemini[Gemini API]
+    Gemini -->|抽出結果| API
+    API -->|Adapter| E[正規化スキーマ]
     E -->|Classifier| F{判定結果}
     F -->|CAPITAL_LIKE<br/>EXPENSE_LIKE| G[判定完了]
     F -->|GUIDANCE| H[不足情報提示]
     H -->|Vertex AI Search| I[法令エビデンス]
-    I -->|Citations| D
+    I -->|Citations| API
     H -->|ユーザー回答| J[再実行]
-    J -->|answers| D
-    D -->|diff表示| K[Before → After]
+    J -->|answers| API
+    API -->|diff表示| UI
 
-    style D fill:#4285f4,stroke:#1a73e8,color:#fff
-    style I fill:#ea4335,stroke:#c5221f,color:#fff
+    style UI fill:#34a853,stroke:#137333,color:#fff
+    style API fill:#4285f4,stroke:#1a73e8,color:#fff
+    style Gemini fill:#ea4335,stroke:#c5221f,color:#fff
     style F fill:#fbbc04,stroke:#f9ab00,color:#000
 ```
 
@@ -234,8 +237,8 @@ graph TB
 | **API** | FastAPI + Pydantic | REST API、スキーマ検証 |
 | **PDF処理** | Gemini Vision / PyMuPDF | PDF → テキスト抽出 |
 | **法令検索** | Vertex AI Search | 関連法令のエビデンス検索 |
-| **デプロイ** | Cloud Run | サーバーレスAPIホスティング |
-| **UI** | Streamlit | デモ用Webインターフェース |
+| **デプロイ** | Cloud Run（2サービス構成） | API + UI をそれぞれホスティング |
+| **UI** | Streamlit | Webインターフェース |
 
 ### Google Cloud AIの活用
 
@@ -243,7 +246,14 @@ graph TB
 |---------|------|
 | **Gemini Vision** | PDF画像からの高精度抽出（手書き対応） |
 | **Vertex AI Search** | 法令・規則の根拠検索 |
-| **Cloud Run** | APIのデプロイ・運用 |
+| **Cloud Run** | 2サービス構成でデプロイ |
+
+#### Cloud Run デプロイ構成
+
+| サービス | 役割 | URL |
+|---------|------|-----|
+| **API** | バックエンド（FastAPI） | [fixed-asset-agentic-api](https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app) |
+| **UI** | フロントエンド（Streamlit） | [fixed-asset-agentic-ui](https://fixed-asset-agentic-ui-986547623556.asia-northeast1.run.app) |
 
 ---
 
@@ -309,7 +319,8 @@ graph TB
 ## 参考リンク
 
 - [GitHub リポジトリ](https://github.com/because-and-or/fixed-asset-agentic)
-- [Cloud Run デプロイ版](https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app)
+- [デモUI（Cloud Run）](https://fixed-asset-agentic-ui-986547623556.asia-northeast1.run.app)
+- [API（Cloud Run）](https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app)
 
 ---
 

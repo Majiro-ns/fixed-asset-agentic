@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Minimal Streamlit UI for fixed asset classification."""
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -9,6 +10,10 @@ import requests
 import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+
+# API URL (環境変数で上書き可能)
+DEFAULT_API_URL = "https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app"
+API_URL = os.environ.get("API_URL", DEFAULT_API_URL)
 
 
 def _format_reason_for_display(reason: str) -> Optional[str]:
@@ -94,11 +99,36 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("## 📊 固定資産判定システム")
+st.caption("見積書・請求書の「資産/経費」判定をAIが支援します")
+
+# 初回アクセスガイド
+if "show_guide" not in st.session_state:
+    st.session_state.show_guide = True
+
+if st.session_state.show_guide:
+    with st.container():
+        st.info("""
+**はじめての方へ** 📖
+
+**使い方**
+1. PDFをアップロード、またはサイドバーでサンプルを選択
+2. 「判定を実行」ボタンをクリック
+
+**このシステムの特徴: 止まる→聞く→変わる**
+- **止まる**: 判断が難しい場合、AIは無理に判定せず「要確認」で停止します
+- **聞く**: 「修繕？新規購入？」など、判定に必要な情報を質問します
+- **変わる**: 追加情報をもとに再判定し、結果の変化を明示します
+
+💡 まずはサイドバーの「サンプルデータ」から試してみてください！
+        """)
+        if st.button("✕ 閉じる", key="close_guide"):
+            st.session_state.show_guide = False
+            st.rerun()
 
 # Sidebar
 with st.sidebar:
-    # サーバーURLは固定
-    service_url = "https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app"
+    # サーバーURLは環境変数またはデフォルト
+    service_url = API_URL
 
     st.markdown("### サンプルデータ")
     demo_cases_dir = ROOT_DIR / "data" / "demo"
@@ -111,24 +141,18 @@ with st.sidebar:
     else:
         selected_demo = "-- サンプルを選択 --"
 
-    # 開発者向けオプション（折りたたみ）
+    # 読み取りモード（常時表示）
     st.markdown("---")
-    with st.expander("⚙️ 詳細設定", expanded=False):
-        pdf_mode = st.radio(
-            "読み取りモード",
-            options=["通常モード", "高精度モード"],
-            index=0,
-            key="pdf_mode",
-            help="複雑なPDFは「高精度モード」を選択"
-        )
-        if pdf_mode == "高精度モード":
-            st.caption("手書き・複雑な表に対応")
-
-        # 開発者向けJSON表示
-        if st.session_state.get("result"):
-            st.markdown("---")
-            st.markdown("**APIレスポンス**")
-            st.json(st.session_state.result)
+    st.markdown("### 読み取りモード")
+    pdf_mode = st.radio(
+        "PDF読み取り方式",
+        options=["通常モード", "高精度モード"],
+        index=0,
+        key="pdf_mode",
+        label_visibility="collapsed"
+    )
+    if pdf_mode == "高精度モード":
+        st.caption("手書き・複雑な表に対応")
 
 
 # Initialize session state
@@ -153,18 +177,23 @@ if "demo_selector" in st.session_state:
         st.session_state.initial_opal = None
         st.session_state.last_demo = current_demo
 
-# Input section - コンパクト
+# Input section
+# サンプルデータを読み込む
 opal_json_text = ""
-if selected_demo != "-- サンプルを選択 --" and demo_cases:
-    demo_path = demo_cases_dir / selected_demo
-    try:
-        demo_json = json.loads(demo_path.read_text(encoding="utf-8"))
-        opal_json_text = json.dumps(demo_json, ensure_ascii=False)
-        st.info(f"📋 {selected_demo}")
-    except Exception:
-        pass
+demo_cases_dir = ROOT_DIR / "data" / "demo"  # 再定義（スコープ明確化）
+current_selected = st.session_state.get("demo_selector", "-- サンプルを選択 --")
 
-# PDF Upload（コンパクト）
+if current_selected != "-- サンプルを選択 --":
+    demo_path = demo_cases_dir / current_selected
+    if demo_path.exists():
+        try:
+            demo_json = json.loads(demo_path.read_text(encoding="utf-8"))
+            opal_json_text = json.dumps(demo_json, ensure_ascii=False)
+            st.info(f"📋 サンプル: {current_selected}")
+        except Exception:
+            st.error(f"サンプル読み込みエラー: {current_selected}")
+
+# PDF Upload
 uploaded_pdf = st.file_uploader("PDFをアップロード", type=["pdf"], key="pdf_upload", label_visibility="collapsed")
 if uploaded_pdf:
     st.caption(f"📄 {uploaded_pdf.name}")
@@ -305,15 +334,34 @@ if st.session_state.result:
     decision = result.get("decision", "UNKNOWN")
     confidence = result.get("confidence", 0.0)
 
-    # GUIDANCEの場合：判定結果＋支出目的選択を一画面に
+    # GUIDANCEの場合：確信度・傾向も表示しつつ、支出目的を聞く
     if decision == "GUIDANCE":
+        # 傾向を分析（evidenceから）
+        evidence = result.get("evidence", [])
+        cap_count = sum(1 for e in evidence if e.get("classification") == "CAPITAL_LIKE")
+        exp_count = sum(1 for e in evidence if e.get("classification") == "EXPENSE_LIKE")
+
+        if cap_count > exp_count:
+            tendency = "資産寄りの傾向"
+            tendency_color = "#10B981"
+        elif exp_count > cap_count:
+            tendency = "経費寄りの傾向"
+            tendency_color = "#3B82F6"
+        else:
+            tendency = "判断が分かれています"
+            tendency_color = "#F59E0B"
+
         st.markdown(f"""
         <div style="background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 1rem; border-radius: 0.5rem; margin-bottom: 0.5rem;">
-            <h3 style="margin: 0; color: #B45309;">⚠️ 要確認 - この支出の目的を教えてください</h3>
+            <h3 style="margin: 0; color: #B45309;">⚠️ 要確認</h3>
+            <p style="margin: 0.3rem 0 0 0; font-size: 0.9rem; color: #78350F;">
+                確信度: <strong>{confidence:.0%}</strong> ｜
+                <span style="color: {tendency_color};">{tendency}</span>
+            </p>
         </div>
         """, unsafe_allow_html=True)
 
-        # 支出目的選択ボタン（判定直後に表示）
+        st.markdown("**この支出の目的を教えてください**")
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             if st.button("🔧 修繕・メンテナンス", use_container_width=True, key="btn_repair"):

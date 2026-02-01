@@ -268,6 +268,15 @@ curl -X POST http://localhost:8000/classify \
 
 ## ☁️ Cloud Run デプロイ
 
+本システムは2つのCloud Runサービスで構成されます:
+
+| サービス | 役割 | URL |
+|---------|------|-----|
+| **API** | FastAPI バックエンド | https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app |
+| **UI** | Streamlit フロントエンド | https://fixed-asset-agentic-ui-986547623556.asia-northeast1.run.app |
+
+### デプロイ手順
+
 ```bash
 # 1. プロジェクト設定
 gcloud config set project YOUR_PROJECT_ID
@@ -275,13 +284,21 @@ gcloud config set project YOUR_PROJECT_ID
 # 2. 必要APIを有効化
 gcloud services enable run.googleapis.com artifactregistry.googleapis.com aiplatform.googleapis.com
 
-# 3. Cloud Runにデプロイ
+# 3. APIをデプロイ
 gcloud run deploy fixed-asset-agentic-api \
   --source . \
   --region asia-northeast1 \
   --allow-unauthenticated
 
-# 4. スモークテスト
+# 4. UIをデプロイ
+gcloud run deploy fixed-asset-agentic-ui \
+  --source . \
+  --dockerfile Dockerfile.ui \
+  --region asia-northeast1 \
+  --allow-unauthenticated \
+  --set-env-vars "API_URL=https://fixed-asset-agentic-api-xxx.run.app"
+
+# 5. スモークテスト
 .\scripts\smoke_cloudrun.ps1
 ```
 

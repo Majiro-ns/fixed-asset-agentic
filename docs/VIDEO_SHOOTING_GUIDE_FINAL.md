@@ -349,8 +349,8 @@
 ### 撮影30分前
 
 - [ ] OBS設定完了、テスト録画で音量確認
-- [ ] Cloud Run ヘルスチェック: `curl https://fixed-asset-agentic-api-vpq2oosrfq-an.a.run.app/health`
-- [ ] Streamlit UI起動: `streamlit run ui/app_minimal.py`
+- [ ] Cloud Run ヘルスチェック: `curl https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app/health`
+- [ ] Cloud Run UI: https://fixed-asset-agentic-ui-986547623556.asia-northeast1.run.app
 - [ ] デモPDF 3ファイルをデスクトップに配置
 - [ ] Chrome: キャッシュクリア、ブックマークバー非表示
 - [ ] 通知オフ: Slack, Teams, メール, Discord

@@ -20,6 +20,9 @@ data/
 # and allow demo cases
 !data/demo/
 !data/demo/**/*.json
+# and allow demo PDFs
+!data/demo_pdf/
+!data/demo_pdf/**/*.pdf
 
 openapi.json
 
