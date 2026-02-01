@@ -42,6 +42,10 @@ ui/
 requirements-ui.txt
 
 # Other
-脳みそ.txt
-起動コマンド.txt
+脳みぁEtxt
+起動コマンチEtxt
 INDEX.md
+
+# Japanese filenames (cause container import issues)
+�]�݂�.txt
+LORD_INSTRUCTIONS*.md

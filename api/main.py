@@ -12,6 +12,15 @@ from core.classifier import classify_document
 from core.pdf_extract import extract_pdf, extraction_to_opal
 from core.policy import load_policy
 
+# 耐用年数判定（フラグ制御）
+try:
+    from api.useful_life_estimator import estimate_useful_life
+    USEFUL_LIFE_AVAILABLE = True
+except ImportError:
+    USEFUL_LIFE_AVAILABLE = False
+    def estimate_useful_life(*args, **kwargs):
+        return {"useful_life_years": 0, "source": "not_available"}
+
 # Optional: Vertex AI Search integration (feature-flagged)
 try:
     from api.vertex_search import get_citations_for_guidance
@@ -69,20 +78,25 @@ class ClassifyResponse(BaseModel):
     why_missing_matters: List[str]
     # Google Cloud: Legal citations (Vertex AI Search)
     citations: List[Dict[str, Any]] = []
+    # 耐用年数判定（CAPITAL_LIKEの場合のみ）
+    useful_life: Optional[Dict[str, Any]] = None
 
 
 def _format_classify_response(
     doc: Dict[str, Any],
     trace_steps: Optional[List[str]] = None,
     citations: Optional[List[Dict[str, Any]]] = None,
+    useful_life: Optional[Dict[str, Any]] = None,
 ) -> ClassifyResponse:
     """
     Convert pipeline output to API response format.
     Maps existing classifier/pipeline outputs to decision/reasons/evidence/questions/metadata.
     """
     line_items = doc.get("line_items", [])
-    
-    # decision: aggregate classifications (GUIDANCE takes priority, then most common)
+
+    # decision: aggregate classifications
+    # ルール: 明確な判定（CAPITAL_LIKE/EXPENSE_LIKE）が過半数あればそちらを採用
+    #        GUIDANCEのみ or 明確判定が拮抗している場合はGUIDANCE
     classifications = []
     guidance_items = []
     for item in line_items:
@@ -92,14 +106,35 @@ def _format_classify_response(
                 classifications.append(cls)
                 if cls == "GUIDANCE":
                     guidance_items.append(item)
-    
-    if guidance_items:
-        decision = "GUIDANCE"
-    elif classifications:
-        # Most common classification
-        decision = max(set(classifications), key=classifications.count)
-    else:
+
+    if not classifications:
         decision = "UNKNOWN"
+    else:
+        # カウント集計
+        capital_count = sum(1 for c in classifications if c == "CAPITAL_LIKE")
+        expense_count = sum(1 for c in classifications if c == "EXPENSE_LIKE")
+        guidance_count = sum(1 for c in classifications if c == "GUIDANCE")
+        total = len(classifications)
+
+        # 明確判定（資産 or 費用）が過半数かつ競合していない場合はそちらを採用
+        if capital_count > 0 and expense_count > 0:
+            # 両方ある場合 = 競合 → GUIDANCE
+            decision = "GUIDANCE"
+        elif capital_count >= total / 2:
+            # 資産寄りが半数以上
+            decision = "CAPITAL_LIKE"
+        elif expense_count >= total / 2:
+            # 費用寄りが半数以上
+            decision = "EXPENSE_LIKE"
+        elif capital_count > expense_count:
+            # 資産寄りの方が多い
+            decision = "CAPITAL_LIKE"
+        elif expense_count > capital_count:
+            # 費用寄りの方が多い
+            decision = "EXPENSE_LIKE"
+        else:
+            # それ以外はGUIDANCE
+            decision = "GUIDANCE"
     
     # reasons: from rationale_ja and flags
     reasons: List[str] = []
@@ -119,12 +154,14 @@ def _format_classify_response(
         if isinstance(item, dict):
             ev = item.get("evidence")
             if isinstance(ev, dict):
+                # confidenceはclassifierで計算されたitemのconfidenceを優先
+                item_confidence = item.get("confidence", 0.8)
                 evidence_item = {
                     "line_no": item.get("line_no"),
                     "description": item.get("description"),
                     "source_text": ev.get("source_text", ""),
                     "position_hint": ev.get("position_hint", ""),
-                    "confidence": ev.get("confidence", 0.8),  # WIN+1: default 0.8
+                    "confidence": item_confidence,
                 }
                 # Include snippets if available
                 snippets = ev.get("snippets")
@@ -163,9 +200,21 @@ def _format_classify_response(
     
     # WIN+1: additive fields
     is_valid_document = bool(doc.get("document_info")) and len(line_items) > 0
-    # Calculate confidence: average of evidence confidences, default to 0.7 if no evidence
-    confidences = [e.get("confidence", 0.8) for e in evidence]
-    confidence = sum(confidences) / len(confidences) if confidences else 0.7
+
+    # Calculate confidence: 決定に貢献した明細の確信度を使う
+    # - CAPITAL_LIKE/EXPENSE_LIKE: その分類の明細の最大確信度
+    # - GUIDANCE: GUIDANCE明細の平均確信度
+    if decision in ("CAPITAL_LIKE", "EXPENSE_LIKE"):
+        matching_confidences = [
+            item.get("confidence", 0.8)
+            for item in line_items
+            if isinstance(item, dict) and item.get("classification") == decision
+        ]
+        confidence = max(matching_confidences) if matching_confidences else 0.7
+    else:
+        # GUIDANCE: 平均を使う
+        confidences = [e.get("confidence", 0.8) for e in evidence]
+        confidence = sum(confidences) / len(confidences) if confidences else 0.5
     
     # missing_fields and why_missing_matters: only for GUIDANCE
     missing_fields: List[str] = []
@@ -204,6 +253,7 @@ def _format_classify_response(
         missing_fields=missing_fields,
         why_missing_matters=why_missing_matters,
         citations=citations,
+        useful_life=useful_life,
     )
 
 
@@ -358,6 +408,7 @@ async def classify_pdf(
     file: UploadFile = File(...),
     policy_path: Optional[str] = None,
     use_gemini_vision: Optional[str] = None,
+    estimate_useful_life_flag: Optional[str] = None,
 ) -> ClassifyResponse:
     """
     Classify fixed asset items from uploaded PDF file.
@@ -367,6 +418,7 @@ async def classify_pdf(
 
     Query Parameters:
         use_gemini_vision: "1" to force Gemini Vision extraction (requires GEMINI_PDF_ENABLED=1)
+        estimate_useful_life_flag: "1" to estimate useful life for CAPITAL_LIKE items
     """
     # Feature flag check
     if not _bool_env("PDF_CLASSIFY_ENABLED", False):
@@ -446,8 +498,34 @@ async def classify_pdf(
                             citations=citations,
                         )
             
+            # 耐用年数判定（CAPITAL_LIKEの場合のみ、フラグ有効時）
+            useful_life_result: Optional[Dict[str, Any]] = None
+            should_estimate = (
+                estimate_useful_life_flag == "1" or
+                _bool_env("USEFUL_LIFE_ENABLED", False)
+            )
+            if should_estimate and USEFUL_LIFE_AVAILABLE:
+                # 判定結果を先に取得
+                temp_response = _format_classify_response(classified, trace_steps=trace_steps.copy())
+                if temp_response.decision == "CAPITAL_LIKE":
+                    # 最初のCAPITAL_LIKE明細のdescriptionで耐用年数を判定
+                    capital_items = [
+                        item for item in classified.get("line_items", [])
+                        if isinstance(item, dict) and item.get("classification") == "CAPITAL_LIKE"
+                    ]
+                    if capital_items:
+                        desc = capital_items[0].get("description", "")
+                        useful_life_result = estimate_useful_life(desc)
+                        if useful_life_result and useful_life_result.get("useful_life_years", 0) > 0:
+                            trace_steps.append("useful_life")
+
             trace_steps.append("format")
-            return _format_classify_response(classified, trace_steps=trace_steps, citations=citations)
+            return _format_classify_response(
+                classified,
+                trace_steps=trace_steps,
+                citations=citations,
+                useful_life=useful_life_result,
+            )
         
         finally:
             # Clean up temporary file

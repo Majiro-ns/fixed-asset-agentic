@@ -21,11 +21,20 @@ EXPENSE_KEYWORDS = [
     "保守",
     "点検",
     "修理",
+    "修繕",
     "調整",
     "清掃",
     "清拭",
     "消耗品",
     "雑費",
+    "メンテナンス",
+    "維持",
+    "管理",
+    "交換",
+    "補修",
+    "年間",
+    "定期",
+    "契約",
 ]
 
 MIXED_KEYWORDS = [
@@ -33,7 +42,6 @@ MIXED_KEYWORDS = [
     "撤去",
     "移設",
     "既設",
-    "更新",
 ]
 
 LABEL_JA = {
@@ -118,22 +126,69 @@ def _apply_tax_rules(
     return rules
 
 
+def _calculate_confidence(
+    classification: str,
+    cap_hits: List[str],
+    exp_hits: List[str],
+    mixed_hits: List[str],
+    guidance_hits: List[str],
+    flags: List[str],
+) -> float:
+    """
+    分類の確信度を計算する。
+    - キーワードが明確にヒット: 0.85〜0.95
+    - 混在・競合: 0.50〜0.65
+    - キーワードなし: 0.30〜0.50
+    """
+    if classification == schema.CAPITAL_LIKE:
+        # 資産寄り判定: キーワード数に応じて確信度UP
+        base = 0.85
+        bonus = min(len(cap_hits) - 1, 2) * 0.03  # 追加キーワードで+0.03ずつ
+        return min(base + bonus, 0.95)
+    elif classification == schema.EXPENSE_LIKE:
+        # 費用寄り判定: キーワード数に応じて確信度UP
+        base = 0.85
+        bonus = min(len(exp_hits) - 1, 2) * 0.03
+        return min(base + bonus, 0.95)
+    else:
+        # GUIDANCE: 理由によって確信度を変える
+        if "conflicting_keywords" in flags:
+            # 両方のキーワードがある = 判断が難しい
+            return 0.55
+        elif "no_keywords" in flags:
+            # キーワードなし = 情報不足
+            return 0.40
+        elif mixed_hits:
+            # 混在キーワード
+            return 0.60
+        elif guidance_hits:
+            # ポリシーで強制GUIDANCE
+            return 0.65
+        else:
+            return 0.50
+
+
 def classify_line_item(
     item: Dict[str, Any],
     policy: Optional[Dict[str, Any]] = None,
     doc: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    # descriptionに加え、evidence.source_textからもキーワード検索
     description = str(item.get("description") or "")
+    evidence = item.get("evidence") or {}
+    source_text = str(evidence.get("source_text") or "") if isinstance(evidence, dict) else ""
+    # 両方を結合してキーワード検索対象とする
+    search_text = f"{description} {source_text}"
     policy_cfg = _safe_policy(policy)
     policy_keywords = policy_cfg.get("keywords") if isinstance(policy_cfg.get("keywords"), dict) else {}
     capital_keywords = _merge_keywords(CAPITAL_KEYWORDS, policy_keywords.get("asset_add", [])) if isinstance(policy_keywords, dict) else CAPITAL_KEYWORDS
     expense_keywords = _merge_keywords(EXPENSE_KEYWORDS, policy_keywords.get("expense_add", [])) if isinstance(policy_keywords, dict) else EXPENSE_KEYWORDS
     guidance_keywords = policy_keywords.get("guidance_add", []) if isinstance(policy_keywords, dict) else []
 
-    cap_hits = _find_keywords(description, capital_keywords)
-    exp_hits = _find_keywords(description, expense_keywords)
-    mixed_hits = _find_keywords(description, MIXED_KEYWORDS)
-    guidance_hits = _find_keywords(description, guidance_keywords)
+    cap_hits = _find_keywords(search_text, capital_keywords)
+    exp_hits = _find_keywords(search_text, expense_keywords)
+    mixed_hits = _find_keywords(search_text, MIXED_KEYWORDS)
+    guidance_hits = _find_keywords(search_text, guidance_keywords)
 
     flags: List[str] = []
 
@@ -180,7 +235,8 @@ def classify_line_item(
     ):
         _append_flag(flags, "policy:amount_threshold")
 
-    # Tax rules (10/20/30/60万, stop-first): add flags; suggests_guidance -> GUIDANCE
+    # Tax rules (10/20/30/60万): add flags as reference info
+    # キーワードで明確に判定できている場合は税ルールで上書きしない
     total_amount = None
     if isinstance(doc, dict):
         totals = doc.get("totals") or {}
@@ -189,7 +245,8 @@ def classify_line_item(
     for tr in tax_results:
         flag = f"tax_rule:{tr['rule_id']}:{tr['reason']}"
         _append_flag(flags, flag)
-        if tr.get("suggests_guidance") is True:
+        # 既にGUIDANCEの場合のみ税ルールを適用（CAPITAL_LIKE/EXPENSE_LIKEは維持）
+        if tr.get("suggests_guidance") is True and classification == schema.GUIDANCE:
             classification = schema.GUIDANCE
 
     label_ja = LABEL_JA[classification]
@@ -201,12 +258,18 @@ def classify_line_item(
     else:
         rationale_ja = GUIDANCE_RATIONALE
 
+    # 確信度を計算
+    confidence = _calculate_confidence(
+        classification, cap_hits, exp_hits, mixed_hits, guidance_hits, flags
+    )
+
     item.update(
         {
             "classification": classification,
             "label_ja": label_ja,
             "rationale_ja": rationale_ja,
             "flags": flags,
+            "confidence": confidence,
         }
     )
     return item

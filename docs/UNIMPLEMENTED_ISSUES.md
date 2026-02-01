@@ -32,7 +32,7 @@
 | Gemini 1.5 Pro マルチモーダル | IMPLEMENTATION_AUDIT | PDFを画像として送信しレイアウト・表構造を解析 |
 | Vertex AI Gemini（classifier内統合） | IMPLEMENTATION_STATUS | GUIDANCE時の候補案生成・補助判断 |
 | ai_suggestions 出力（2026-FA-03） | IMPLEMENTATION_AUDIT, specs | 勘定科目候補リスト（account_category, confidence, reason） |
-| useful_life の API 統合 | integration_test_report | estimate_useful_life は存在するが api/main.py から未呼び出し |
+| ✅ ~~useful_life の API 統合~~ | integration_test_report | **実装済み（2026-02-01）** api/main.py から呼び出し、UIで表示 |
 | useful_life_candidates（2026-FA-04）full schema | specs | 法定耐用年数候補の完全仕様（legal_basis, historical_support 等） |
 | Vertex AI Search 実動作確認 | integration_test_report | 環境変数設定による本番確認が必要 |
 | Gemini API 実動作確認 | integration_test_report | APIキーが必要、本番環境で確認 |
@@ -126,7 +126,7 @@
 ### 高（優勝・審査に直結）
 
 4. ai_suggestions（勘定科目候補）の実装
-5. useful_life の API 統合
+5. ~~useful_life の API 統合~~ ✅ **完了（2026-02-01）**
 6. Vertex AI Search / Gemini の本番動作確認
 
 ### 中（差別化・品質向上）
@@ -155,7 +155,7 @@
 | 行単位パース | extraction_to_opal で実装済み |
 | 税務ルール（10/20/30/60万） | classifier に _apply_tax_rules 実装済み |
 | /classify_pdf | api/main.py に実装済み |
-| useful_life_estimator.py | ファイル存在、API 統合のみ未実施 |
+| useful_life_estimator.py | ✅ API 統合済み（2026-02-01）、UIで耐用年数表示 |
 | Vertex AI Search | vertex_search.py に実装済み |
 
 ---
