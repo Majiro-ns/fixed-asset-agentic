@@ -155,7 +155,7 @@ def _try_gemini_vision(path: Path) -> Optional[Dict[str, Any]]:
     try:
         # Configure Gemini
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         # Convert PDF to images
         doc = fitz.open(str(path))
@@ -385,6 +385,34 @@ _HEADER_UNIT = frozenset({"単位"})
 _HEADER_PRICE = frozenset({"単価", "価格"})
 _HEADER_AMOUNT = frozenset({"金額", "合計", "小計", "計", "税込", "税抜"})
 
+# 合計行・小計行として除外すべきキーワード
+_TOTAL_KEYWORDS = frozenset({
+    "合計", "小計", "計", "税込", "税抜", "税込合計", "税抜合計",
+    "総合計", "御請求金額", "請求金額", "お支払金額", "支払金額",
+    "消費税", "消費税額", "税額", "値引", "値引き", "割引",
+    "送料", "運賃", "配送料", "手数料", "振込手数料",
+    "TOTAL", "Total", "total", "SUBTOTAL", "Subtotal", "subtotal",
+    "TAX", "Tax", "tax", "合計金額", "ご請求金額", "お見積金額",
+})
+
+
+def _is_total_row(desc: str) -> bool:
+    """
+    Check if the description indicates a total/subtotal row that should be excluded.
+    合計行・小計行・税込行などを除外するための判定。
+    """
+    if not desc:
+        return False
+    # 完全一致チェック
+    normalized = desc.strip().replace(" ", "").replace("　", "")
+    if normalized in _TOTAL_KEYWORDS:
+        return True
+    # 先頭一致チェック（「合計:」「小計　」など）
+    for keyword in _TOTAL_KEYWORDS:
+        if normalized.startswith(keyword):
+            return True
+    return False
+
 
 def _normalize_header(cell: Any) -> str:
     s = (cell or "").strip().replace(" ", "").replace("\n", "")
@@ -464,6 +492,11 @@ def _parse_line_items_from_tables(
                     continue
                 cells = [str(c).strip() if c is not None else "" for c in row]
                 desc = cells[desc_col] if 0 <= desc_col < len(cells) else ""
+
+                # 合計行・小計行・税込行は除外
+                if _is_total_row(desc):
+                    continue
+
                 qty_val = _parse_number(cells[qty_col]) if 0 <= qty_col < len(cells) else None
                 unit_val = _parse_number(cells[unit_col]) if 0 <= unit_col < len(cells) else None
                 amt_val = _parse_number(cells[amount_col]) if 0 <= amount_col < len(cells) else None
@@ -484,8 +517,17 @@ def _parse_line_items_from_tables(
                         {"page": e.get("page", page_no), "method": e.get("method", "text"), "snippet": _safe_snippet(e.get("snippet", desc))}
                         for e in evidence_list if isinstance(e, dict)
                     ]
+
+                # descが空の場合のフォールバック処理（演算子優先順位を明確に）
+                if desc:
+                    item_description = desc
+                elif amt_val:
+                    item_description = f"明細({int(amt_val) if amt_val == int(amt_val) else amt_val}円)"
+                else:
+                    item_description = "品名なし"
+
                 item: Dict[str, Any] = {
-                    "description": desc or f"明細({amt_val}円)" if amt_val else "明細",
+                    "description": item_description,
                     "evidence": evidence_obj,
                 }
                 if qty_val is not None:
@@ -519,6 +561,11 @@ def _parse_line_items_from_text(text: str, page_no: int = 1) -> List[Dict[str, A
         amt = nums_clean[-1]
         desc = num_pat.sub("", line).strip()
         desc = re.sub(r"\s+", " ", desc).strip()
+
+        # 合計行・小計行・税込行は除外
+        if _is_total_row(desc):
+            continue
+
         if not desc:
             desc = f"明細({int(amt)}円)"
         if amt < 10 or amt > 10_000_000_000:

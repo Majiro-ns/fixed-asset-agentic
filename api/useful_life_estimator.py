@@ -164,8 +164,8 @@ def _call_gemini_api(prompt: str) -> Optional[Dict[str, Any]]:
     try:
         genai.configure(api_key=api_key)
 
-        # Use Gemini 1.5 Flash for fast response
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # Use Gemini 2.0 Flash for fast response
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         response = model.generate_content(
             prompt,

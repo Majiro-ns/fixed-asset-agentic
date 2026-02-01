@@ -1,4 +1,5 @@
 pytest
+python-dotenv
 streamlit
 PyMuPDF
 Pillow>=10.0.0

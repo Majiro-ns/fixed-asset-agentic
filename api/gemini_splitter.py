@@ -24,7 +24,7 @@ def _bool_env(name: str, default: bool = False) -> bool:
 
 def _get_model_name() -> str:
     """Get model name from env or use default (flash for speed)."""
-    return os.getenv("GEMINI_SPLITTER_MODEL", "gemini-1.5-flash")
+    return os.getenv("GEMINI_SPLITTER_MODEL", "gemini-2.0-flash")
 
 
 # System prompt for document boundary detection

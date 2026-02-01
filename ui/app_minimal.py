@@ -15,13 +15,18 @@ import streamlit as st
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
-# 新機能モジュールのインポート（オプショナル）
-try:
-    from ui.batch_upload import render_batch_upload
-    BATCH_UPLOAD_AVAILABLE = True
-except ImportError:
-    BATCH_UPLOAD_AVAILABLE = False
+# 親ディレクトリをsys.pathに追加（coreモジュール等のインポート用）
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
+# .env ファイルから環境変数を読み込み
+try:
+    from dotenv import load_dotenv
+    load_dotenv(ROOT_DIR / ".env")
+except ImportError:
+    pass  # python-dotenv がなければスキップ
+
+# 新機能モジュールのインポート（オプショナル）
 try:
     from ui.similar_cases import render_similar_cases
     SIMILAR_CASES_AVAILABLE = True
@@ -53,8 +58,10 @@ try:
     from core.pdf_splitter import generate_thumbnail_grid_with_metadata
     from api.gemini_splitter import detect_document_boundaries
     PDF_SPLITTER_AVAILABLE = True
-except ImportError:
+    PDF_SPLITTER_ERROR = None
+except ImportError as e:
     PDF_SPLITTER_AVAILABLE = False
+    PDF_SPLITTER_ERROR = str(e)
 
 # API URL (環境変数で上書き可能)
 DEFAULT_API_URL = "https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app"
@@ -86,6 +93,34 @@ def _format_amount(amount: Any) -> str:
         return f"¥{int(float(amount)):,}"
     except (ValueError, TypeError):
         return str(amount)
+
+
+def _get_line_item_selection_key(source_name: str, index: int) -> str:
+    """明細選択状態のキーを生成"""
+    return f"{source_name}_{index}"
+
+
+def _init_line_item_selections(source_name: str, line_items: List[Dict]) -> None:
+    """明細選択状態を初期化（デフォルトは全てON）"""
+    if source_name not in st.session_state.line_item_selections:
+        st.session_state.line_item_selections[source_name] = {}
+    for i in range(len(line_items)):
+        if i not in st.session_state.line_item_selections[source_name]:
+            st.session_state.line_item_selections[source_name][i] = True
+
+
+def _get_selected_total(source_name: str, line_items: List[Dict]) -> Tuple[float, int]:
+    """選択された明細の合計金額と件数を計算"""
+    _init_line_item_selections(source_name, line_items)
+    selections = st.session_state.line_item_selections.get(source_name, {})
+    selected_total = 0.0
+    selected_count = 0
+    for i, item in enumerate(line_items):
+        if selections.get(i, True):
+            amount = item.get("amount", 0) or 0
+            selected_total += amount
+            selected_count += 1
+    return selected_total, selected_count
 
 
 def _check_duplicate(source_name: str, total_amount: float) -> bool:
@@ -189,12 +224,12 @@ if "ledger_data" not in st.session_state:
     st.session_state.ledger_data = []
 if "embedding_store" not in st.session_state:
     st.session_state.embedding_store = None
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = "single"
 if "enable_history_search" not in st.session_state:
     st.session_state.enable_history_search = False
 if "multi_doc_results" not in st.session_state:
     st.session_state.multi_doc_results = None  # 複数書類検出時の結果リスト
+if "line_item_selections" not in st.session_state:
+    st.session_state.line_item_selections = {}  # 明細ごとの選択状態 {source_name: {index: bool}}
 
 # サイドバー（ヘルプ・設定を隠す）
 with st.sidebar:
@@ -249,6 +284,14 @@ with st.sidebar:
         if st.button("🗑️ 履歴クリア", use_container_width=True):
             st.session_state.history = []
             st.rerun()
+
+    st.markdown("---")
+    st.markdown("### 🔧 開発者向け")
+    st.session_state.dev_mode = st.toggle(
+        "デバッグ表示",
+        value=st.session_state.get("dev_mode", False),
+        help="詳細なデバッグ情報を表示します"
+    )
 
     st.markdown("---")
     st.markdown("### ❓ ヘルプ")
@@ -337,17 +380,8 @@ if "demo_selector" in st.session_state:
 st.markdown("## 📊 固定資産判定")
 service_url = API_URL
 
-# タブ切り替え（単一判定 / 一括アップロード）
-if BATCH_UPLOAD_AVAILABLE:
-    tab_single, tab_batch = st.tabs(["📄 単一判定", "📁 一括判定"])
-else:
-    tab_single = st.container()
-    tab_batch = None
-
-# 単一判定タブ
-with tab_single:
-    # 入力エリア
-    col_input, col_result = st.columns([1, 1])
+# 入力エリア
+col_input, col_result = st.columns([1, 1])
 
 with col_input:
     # PDFアップロード
@@ -410,6 +444,12 @@ with col_input:
                 use_gemini_vision = "高精度" in st.session_state.get("pdf_mode", "")
 
                 # 高精度モード + PDF分割機能が利用可能な場合、複数書類検出を試みる
+                if st.session_state.get("dev_mode"):
+                    st.write(f"🔧 PDF分割機能: {'有効' if PDF_SPLITTER_AVAILABLE else '無効'}")
+                    if not PDF_SPLITTER_AVAILABLE and PDF_SPLITTER_ERROR:
+                        st.write(f"   理由: {PDF_SPLITTER_ERROR}")
+                    st.write(f"🔧 高精度モード: {'ON' if use_gemini_vision else 'OFF'}")
+
                 if use_gemini_vision and PDF_SPLITTER_AVAILABLE:
                     import tempfile
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
@@ -428,7 +468,27 @@ with col_input:
                                 total_pages
                             )
 
+                        # デバッグ: 境界検出結果を表示（開発者オプションON時）
+                        if st.session_state.get("dev_mode"):
+                            st.write(f"🔍 PDF分割デバッグ:")
+                            st.write(f"   - total_pages={total_pages}")
+                            st.write(f"   - len(boundaries)={len(boundaries)}")
+                            st.write(f"   - boundaries (JSON):")
+                            st.json(boundaries)
+                            # 各書類の詳細
+                            for i, b in enumerate(boundaries):
+                                has_error = b.get("error", None)
+                                st.write(f"   - 書類{i+1}: start_page={b.get('start_page')}, end_page={b.get('end_page')}, type={b.get('doc_type')}, error={has_error}")
+
                         # 複数書類が検出された場合
+                        condition_len_gt_1 = len(boundaries) > 1
+                        condition_no_error = not boundaries[0].get("error") if boundaries else False
+                        if st.session_state.get("dev_mode"):
+                            st.write(f"🔍 条件評価:")
+                            st.write(f"   - len(boundaries) > 1 : {condition_len_gt_1}")
+                            st.write(f"   - not boundaries[0].get('error') : {condition_no_error}")
+                            st.write(f"   - 複数書類処理に進む: {condition_len_gt_1 and condition_no_error}")
+
                         if len(boundaries) > 1 and not boundaries[0].get("error"):
                             st.info(f"📑 {len(boundaries)}件の書類を検出しました")
 
@@ -465,7 +525,12 @@ with col_input:
                             st.session_state.duplicate_warning = None
                             st.rerun()
                         else:
-                            # 単一書類の場合は従来通りの処理へフォールスルー
+                            # 単一書類の場合またはエラーの場合
+                            if st.session_state.get("dev_mode"):
+                                if boundaries and boundaries[0].get("error"):
+                                    st.warning(f"⚠️ 境界検出エラー: {boundaries[0].get('error')}")
+                                else:
+                                    st.info(f"📄 単一書類として処理します（検出数: {len(boundaries)}）")
                             pass
 
                     finally:
@@ -541,7 +606,7 @@ with col_input:
         st.caption("👆 PDFをアップロード、または左のサイドバーでサンプルを選択")
 
 # 結果表示用のヘルパー関数
-def _render_single_result(result: Dict[str, Any], doc_info: Optional[Dict] = None, is_expander: bool = False) -> None:
+def _render_single_result(result: Dict[str, Any], doc_info: Optional[Dict] = None, is_expander: bool = False, source_key: str = "") -> None:
     """単一書類の判定結果を表示するヘルパー関数"""
     decision = result.get("decision", "UNKNOWN")
     confidence = result.get("confidence", 0.0)
@@ -587,9 +652,9 @@ def _render_single_result(result: Dict[str, Any], doc_info: Optional[Dict] = Non
         if rules:
             st.caption(f"💡 {rules[0]}")
 
-    # 明細一覧（コンパクト）
+    # 明細一覧（コンパクト） - is_expanderの場合はチェックボックスなし
     if line_items and not is_expander:
-        with st.expander(f"📋 明細（{len(line_items)}件）", expanded=False):
+        with st.expander(f"📋 明細内訳（{len(line_items)}件）", expanded=False):
             for i, item in enumerate(line_items, 1):
                 desc = item.get("description", "")
                 amt = item.get("amount")
@@ -714,24 +779,73 @@ with col_result:
                     cat_text = f"{category}（{subcategory}）" if subcategory else category
                     st.info(f"📦 **{cat_text}** / 📅 **{years}年**で償却")
 
-        # 税務ルール（1行）
-        if total_amount > 0:
-            rules = _get_applicable_tax_rules(total_amount)
-            if rules:
-                st.caption(f"💡 {rules[0]}")
-
-        # 明細一覧（コンパクト）
+        # 明細一覧（チェックボックス付き）
+        source_key = st.session_state.source_name or "unknown"
         if line_items:
-            with st.expander(f"📋 明細（{len(line_items)}件）", expanded=False):
-                for i, item in enumerate(line_items, 1):
+            # 選択状態を初期化
+            _init_line_item_selections(source_key, line_items)
+            selected_total, selected_count = _get_selected_total(source_key, line_items)
+
+            with st.expander(f"📋 明細内訳（{len(line_items)}件）", expanded=True):
+                for i, item in enumerate(line_items):
                     desc = item.get("description", "")
-                    amt = item.get("amount")
-                    if not desc or desc.startswith("明細("):
+                    amt = item.get("amount", 0) or 0
+                    classification = item.get("classification", decision)
+                    if not desc or desc.startswith("明細(") or desc.startswith("明細（"):
                         desc = "（品名なし）"
                     amt_str = _format_amount(amt) if amt else ""
-                    st.caption(f"{i}. {desc} {amt_str}")
-                if total_amount > 0:
+
+                    # 分類に応じたラベル
+                    if classification == "CAPITAL_LIKE":
+                        class_label = "資産"
+                    elif classification == "EXPENSE_LIKE":
+                        class_label = "経費"
+                    else:
+                        class_label = ""
+
+                    # チェックボックス
+                    checkbox_key = f"line_item_{source_key}_{i}"
+                    is_selected = st.session_state.line_item_selections[source_key].get(i, True)
+
+                    col_check, col_desc = st.columns([0.1, 0.9])
+                    with col_check:
+                        new_selection = st.checkbox(
+                            "",
+                            value=is_selected,
+                            key=checkbox_key,
+                            label_visibility="collapsed"
+                        )
+                        # 選択状態を更新
+                        if new_selection != is_selected:
+                            st.session_state.line_item_selections[source_key][i] = new_selection
+                            st.rerun()
+                    with col_desc:
+                        if new_selection:
+                            st.markdown(f"{desc} {amt_str} -> 資産")
+                        else:
+                            st.markdown(f"~~{desc} {amt_str}~~ -> 除外")
+
+                st.markdown("---")
+                # 選択された明細の合計
+                excluded_count = len(line_items) - selected_count
+                if excluded_count > 0:
+                    st.markdown(f"**合計（資産計上額）: {_format_amount(selected_total)}**")
+                    st.caption(f"（{selected_count}件を資産計上、{excluded_count}件を除外）")
+                else:
                     st.markdown(f"**合計: {_format_amount(total_amount)}**")
+
+            # 税務ルール（選択された合計に基づく）
+            display_amount = selected_total if selected_total > 0 else total_amount
+            if display_amount > 0:
+                rules = _get_applicable_tax_rules(display_amount)
+                if rules:
+                    st.caption(f"💡 {rules[0]}")
+        else:
+            # 明細がない場合
+            if total_amount > 0:
+                rules = _get_applicable_tax_rules(total_amount)
+                if rules:
+                    st.caption(f"💡 {rules[0]}")
 
         # 判断理由（常に表示）
         reasons = result.get("reasons", [])
@@ -784,11 +898,6 @@ with col_result:
 
     else:
         st.caption("👈 PDFをアップロードして判定を実行")
-
-# 一括判定タブ（新機能）
-if BATCH_UPLOAD_AVAILABLE and tab_batch is not None:
-    with tab_batch:
-        render_batch_upload(API_URL)
 
 # フッター（免責事項）
 st.markdown("---")
