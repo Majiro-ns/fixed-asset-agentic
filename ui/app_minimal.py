@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Minimal Streamlit UI for fixed asset classification."""
+import csv
+import io
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -101,6 +104,80 @@ st.markdown("""
 st.markdown("## 📊 固定資産判定システム")
 st.caption("見積書・請求書の「資産/経費」判定をAIが支援します")
 
+# Initialize session state (サイドバーより先に初期化)
+if "result" not in st.session_state:
+    st.session_state.result = None
+if "prev_result" not in st.session_state:
+    st.session_state.prev_result = None
+if "answers" not in st.session_state:
+    st.session_state.answers = {}
+if "initial_opal" not in st.session_state:
+    st.session_state.initial_opal = None
+if "last_demo" not in st.session_state:
+    st.session_state.last_demo = None
+# 判定履歴（蓄積用）
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+
+def _add_to_history(source_name: str, result: Dict[str, Any]) -> None:
+    """判定結果を履歴に追加"""
+    decision = result.get("decision", "UNKNOWN")
+    confidence = result.get("confidence", 0.0)
+    useful_life = result.get("useful_life", {}) or {}
+    line_items = result.get("line_items", [])
+
+    # 各明細を履歴に追加
+    for item in line_items:
+        desc = item.get("description", "")
+        amount = item.get("amount")
+        item_class = item.get("classification", decision)
+
+        # フォールバック名はスキップ
+        if desc.startswith("明細(") or desc.startswith("明細（"):
+            desc = ""
+
+        entry = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "source": source_name,
+            "description": desc,
+            "amount": amount,
+            "decision": item_class,
+            "confidence": confidence,
+            "category": useful_life.get("category", ""),
+            "useful_life_years": useful_life.get("useful_life_years", ""),
+        }
+        st.session_state.history.append(entry)
+
+    # 明細がない場合はドキュメント単位で追加
+    if not line_items:
+        entry = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "source": source_name,
+            "description": "",
+            "amount": None,
+            "decision": decision,
+            "confidence": confidence,
+            "category": useful_life.get("category", ""),
+            "useful_life_years": useful_life.get("useful_life_years", ""),
+        }
+        st.session_state.history.append(entry)
+
+
+def _export_history_csv() -> str:
+    """履歴をCSV形式でエクスポート"""
+    output = io.StringIO()
+    fieldnames = [
+        "timestamp", "source", "description", "amount",
+        "decision", "confidence", "category", "useful_life_years"
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for entry in st.session_state.history:
+        writer.writerow(entry)
+    return output.getvalue()
+
+
 # 初回アクセスガイド
 if "show_guide" not in st.session_state:
     st.session_state.show_guide = True
@@ -154,18 +231,28 @@ with st.sidebar:
     if pdf_mode == "高精度モード":
         st.caption("手書き・複雑な表に対応")
 
+    # 判定履歴・エクスポート
+    st.markdown("---")
+    st.markdown("### 判定履歴")
+    history_count = len(st.session_state.history)
+    st.caption(f"蓄積件数: {history_count}件")
 
-# Initialize session state
-if "result" not in st.session_state:
-    st.session_state.result = None
-if "prev_result" not in st.session_state:
-    st.session_state.prev_result = None
-if "answers" not in st.session_state:
-    st.session_state.answers = {}
-if "initial_opal" not in st.session_state:
-    st.session_state.initial_opal = None
-if "last_demo" not in st.session_state:
-    st.session_state.last_demo = None
+    if history_count > 0:
+        # CSVエクスポートボタン
+        csv_data = _export_history_csv()
+        st.download_button(
+            label="📥 CSVエクスポート",
+            data=csv_data,
+            file_name=f"fixed_asset_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        # 履歴クリアボタン
+        if st.button("🗑️ 履歴をクリア", use_container_width=True):
+            st.session_state.history = []
+            st.rerun()
+
 
 # サンプル切り替え時にセッションをリセット
 if "demo_selector" in st.session_state:
@@ -220,6 +307,10 @@ if opal_json_text and not uploaded_pdf:
                 st.session_state.prev_result = st.session_state.result.copy()
             st.session_state.result = result_data
             st.session_state.answers = {}
+
+            # 履歴に追加
+            _add_to_history(current_selected, result_data)
+
             st.rerun()
 
         except json.JSONDecodeError:
@@ -263,7 +354,10 @@ if uploaded_pdf:
                 st.session_state.prev_result = st.session_state.result.copy()
             st.session_state.result = result_data
             st.session_state.answers = {}
-            
+
+            # 履歴に追加
+            _add_to_history(uploaded_pdf.name, result_data)
+
             st.rerun()
             
         except requests.exceptions.HTTPError as e:
@@ -406,10 +500,20 @@ if st.session_state.result:
         </div>
         """, unsafe_allow_html=True)
 
-        # 耐用年数（CAPITAL_LIKEのみ、コンパクト表示）
+        # 耐用年数・資産種類（CAPITAL_LIKEのみ、コンパクト表示）
         useful_life = result.get("useful_life")
         if decision == "CAPITAL_LIKE" and useful_life and useful_life.get("useful_life_years", 0) > 0:
             years = useful_life.get("useful_life_years")
+            category = useful_life.get("category", "")
+            subcategory = useful_life.get("subcategory", "")
+
+            # 資産種類を表示
+            if category and category != "不明":
+                category_text = category
+                if subcategory:
+                    category_text = f"{category}（{subcategory}）"
+                st.caption(f"📦 資産種類: {category_text}")
+
             st.caption(f"📅 法定耐用年数: {years}年")
 
     # 判定理由（コンパクト表示）
@@ -428,7 +532,28 @@ if st.session_state.result:
             for reason in display_reasons:
                 st.caption(f"• {reason}")
 
-    # 詳細情報は折りたたみ（サイドバーに移動も検討）
+    # 明細一覧（金額・内容）
+    line_items = result.get("line_items", [])
+    if line_items:
+        with st.expander("明細一覧", expanded=True):
+            for idx, item in enumerate(line_items, 1):
+                desc = item.get("description", "")
+                amount = item.get("amount")
+
+                # 「明細(金額)」のようなフォールバック名は除外
+                if desc.startswith("明細(") or desc.startswith("明細（"):
+                    desc = ""
+
+                if amount is not None:
+                    amount_str = f"¥{amount:,.0f}"
+                    if desc:
+                        st.caption(f"{idx}. {desc}  —  {amount_str}")
+                    else:
+                        st.caption(f"{idx}. {amount_str}")
+                elif desc:
+                    st.caption(f"{idx}. {desc}")
+
+    # 詳細情報は折りたたみ
     evidence = result.get("evidence", [])
     if evidence:
         with st.expander("判定根拠", expanded=False):

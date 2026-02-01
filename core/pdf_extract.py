@@ -178,15 +178,20 @@ def _try_gemini_vision(path: Path) -> Optional[Dict[str, Any]]:
 【出力形式】必ず以下のJSON形式で回答してください:
 {
   "line_items": [
-    {"description": "品名・作業内容", "amount": 金額（数値）},
+    {"description": "品名・作業内容（具体的な名称）", "amount": 金額（数値）},
     ...
   ],
   "vendor": "発行元会社名（わかれば）",
   "total": 合計金額（数値、わかれば）
 }
 
-【重要】
-- descriptionには品名、作業内容、サービス名をそのまま記載
+【重要：descriptionの書き方】
+- 品名・作業内容・サービス名を「具体的に」記載すること
+- NG例: "明細", "品目1", "項目" （これらは不可）
+- OK例: "Dell PowerEdge サーバー", "空調設備工事", "ノートPC HP ProBook"
+- 商品名、型番、作業内容など具体的な名称を優先
+
+【その他のルール】
 - amountは数値のみ（カンマや円記号なし）
 - 小計・合計行は line_items に含めない
 - 税抜金額を優先

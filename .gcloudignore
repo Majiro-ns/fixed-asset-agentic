@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Tests
+.pytest_cache/
+
+# Data - exclude uploads/results but include demo
+data/results/
+data/uploads/
+
+# Local files
+*.tmp
+*.log
+*_memo.txt
+*_メモ.txt
+脳みそ.txt
+openapi.json
+.gcloud_config/
+add_apikey.bat
+deploy.bat
+deploy_now.bat

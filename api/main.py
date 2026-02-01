@@ -80,6 +80,8 @@ class ClassifyResponse(BaseModel):
     citations: List[Dict[str, Any]] = []
     # 耐用年数判定（CAPITAL_LIKEの場合のみ）
     useful_life: Optional[Dict[str, Any]] = None
+    # 明細一覧（UIで金額・内容を表示用）
+    line_items: List[Dict[str, Any]] = []
 
 
 def _format_classify_response(
@@ -247,6 +249,17 @@ def _format_classify_response(
     if citations is None:
         citations = []
     
+    # line_items for UI display (description, amount)
+    formatted_line_items: List[Dict[str, Any]] = []
+    for item in line_items:
+        if isinstance(item, dict):
+            formatted_item = {
+                "description": item.get("description", ""),
+                "amount": item.get("amount"),
+                "classification": item.get("classification"),
+            }
+            formatted_line_items.append(formatted_item)
+
     return ClassifyResponse(
         decision=decision,
         reasons=reasons,
@@ -261,6 +274,7 @@ def _format_classify_response(
         why_missing_matters=why_missing_matters,
         citations=citations,
         useful_life=useful_life,
+        line_items=formatted_line_items,
     )
 
 
