@@ -430,6 +430,8 @@ async def classify_pdf(
     policy_path: Optional[str] = None,
     use_gemini_vision: Optional[str] = None,
     estimate_useful_life_flag: Optional[str] = None,
+    start_page: Optional[int] = None,
+    end_page: Optional[int] = None,
 ) -> ClassifyResponse:
     """
     Classify fixed asset items from uploaded PDF file.
@@ -440,6 +442,8 @@ async def classify_pdf(
     Query Parameters:
         use_gemini_vision: "1" to force Gemini Vision extraction (requires GEMINI_PDF_ENABLED=1)
         estimate_useful_life_flag: "1" to estimate useful life for CAPITAL_LIKE items
+        start_page: 開始ページ番号（1始まり、オプショナル）
+        end_page: 終了ページ番号（1始まり、オプショナル）
     """
     # Feature flag check
     if not _bool_env("PDF_CLASSIFY_ENABLED", False):
@@ -455,18 +459,87 @@ async def classify_pdf(
     
     try:
         trace_steps = ["pdf_upload"]
-        
+
         # Save uploaded PDF to temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
             tmp_path = Path(tmp_file.name)
             content = await file.read()
             tmp_path.write_bytes(content)
-        
+
+        # ページ範囲が指定された場合、該当ページのみを抽出
+        extracted_pdf_path: Optional[Path] = None
+        if start_page is not None or end_page is not None:
+            try:
+                import fitz  # PyMuPDF
+
+                doc = fitz.open(tmp_path)
+                total_pages = len(doc)
+
+                # デフォルト値の設定（1始まり → 0始まりに変換）
+                actual_start = (start_page - 1) if start_page is not None else 0
+                actual_end = (end_page - 1) if end_page is not None else (total_pages - 1)
+
+                # バリデーション
+                if actual_start < 0:
+                    doc.close()
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "INVALID_PAGE_RANGE",
+                            "message": "start_page must be >= 1",
+                        },
+                    )
+                if actual_end >= total_pages:
+                    doc.close()
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "INVALID_PAGE_RANGE",
+                            "message": f"end_page ({end_page}) exceeds total pages ({total_pages})",
+                        },
+                    )
+                if actual_start > actual_end:
+                    doc.close()
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "INVALID_PAGE_RANGE",
+                            "message": "start_page must be <= end_page",
+                        },
+                    )
+
+                # 指定ページのみを含む新しいPDFを作成
+                new_doc = fitz.open()
+                for page_num in range(actual_start, actual_end + 1):
+                    new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+
+                # 一時ファイルに保存
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as extracted_tmp:
+                    extracted_pdf_path = Path(extracted_tmp.name)
+                    new_doc.save(str(extracted_pdf_path))
+
+                new_doc.close()
+                doc.close()
+
+                trace_steps.append(f"page_extract:{start_page or 1}-{end_page or total_pages}")
+
+            except ImportError:
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "error": "PYMUPDF_NOT_INSTALLED",
+                        "message": "PyMuPDF (fitz) is required for page range extraction",
+                    },
+                )
+
+        # 処理対象のPDFパスを決定
+        pdf_to_process = extracted_pdf_path if extracted_pdf_path else tmp_path
+
         try:
             # Extract PDF using core functions (core/* not modified, only imported)
             # Pass use_gemini_vision flag if requested via query param
             force_gemini = use_gemini_vision == "1"
-            extraction = extract_pdf(tmp_path, use_gemini_vision=force_gemini)
+            extraction = extract_pdf(pdf_to_process, use_gemini_vision=force_gemini)
             trace_steps.append("extract_gemini" if force_gemini else "extract")
             
             # Convert extraction to Opal-like format
@@ -549,10 +622,15 @@ async def classify_pdf(
             )
         
         finally:
-            # Clean up temporary file
+            # Clean up temporary files
             if tmp_path.exists():
                 tmp_path.unlink()
-        
+            if extracted_pdf_path and extracted_pdf_path.exists():
+                extracted_pdf_path.unlink()
+
+    except HTTPException:
+        # Re-raise HTTPException (validation errors) without wrapping
+        raise
     except ValueError as e:
         raise HTTPException(
             status_code=400,
@@ -571,3 +649,228 @@ async def classify_pdf(
                 "how_to_enable": None,
             },
         )
+
+
+class BatchResultItem(BaseModel):
+    """一括処理の個別結果"""
+    filename: str
+    success: bool
+    decision: Optional[str] = None
+    confidence: Optional[float] = None
+    reasons: List[str] = []
+    error: Optional[str] = None
+
+
+class BatchResponse(BaseModel):
+    """一括処理のレスポンス"""
+    results: List[BatchResultItem]
+    total: int
+    success: int
+    failed: int
+
+
+@app.post("/classify_batch", response_model=BatchResponse)
+async def classify_batch(
+    files: List[UploadFile] = File(...),
+    policy_path: Optional[str] = None,
+    use_gemini_vision: Optional[str] = None,
+    estimate_useful_life_flag: Optional[str] = None,
+) -> BatchResponse:
+    """
+    Classify multiple PDF files in batch.
+
+    複数のPDFファイルを一括でアップロードし、順次処理する。
+    エラーが発生したファイルはスキップして続行する。
+
+    Feature-flagged: Only active when PDF_CLASSIFY_ENABLED=1.
+
+    Query Parameters:
+        policy_path: Path to policy file (optional)
+        use_gemini_vision: "1" to force Gemini Vision extraction
+        estimate_useful_life_flag: "1" to estimate useful life for CAPITAL_LIKE items
+
+    Returns:
+        BatchResponse with results for each file and summary counts
+    """
+    import asyncio
+
+    # Feature flag check (same as classify_pdf)
+    if not _bool_env("PDF_CLASSIFY_ENABLED", False):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "PDF_CLASSIFY_DISABLED",
+                "message": "PDF classification is disabled on this server",
+                "how_to_enable": "Set PDF_CLASSIFY_ENABLED=1 on server",
+                "fallback": "Use POST /classify with Opal JSON instead",
+            },
+        )
+
+    results: List[BatchResultItem] = []
+    success_count = 0
+    failed_count = 0
+
+    for upload_file in files:
+        filename = upload_file.filename or "unknown.pdf"
+
+        try:
+            # タイムアウト30秒で処理
+            result = await asyncio.wait_for(
+                _process_single_pdf(
+                    upload_file,
+                    policy_path,
+                    use_gemini_vision,
+                    estimate_useful_life_flag,
+                ),
+                timeout=30.0,
+            )
+
+            results.append(BatchResultItem(
+                filename=filename,
+                success=True,
+                decision=result.decision,
+                confidence=result.confidence,
+                reasons=result.reasons[:3],  # 最初の3つの理由のみ
+            ))
+            success_count += 1
+
+        except asyncio.TimeoutError:
+            results.append(BatchResultItem(
+                filename=filename,
+                success=False,
+                error="処理がタイムアウトしました（30秒）",
+            ))
+            failed_count += 1
+
+        except HTTPException as e:
+            # HTTPExceptionの詳細メッセージを抽出
+            error_msg = str(e.detail) if hasattr(e, 'detail') else str(e)
+            results.append(BatchResultItem(
+                filename=filename,
+                success=False,
+                error=error_msg,
+            ))
+            failed_count += 1
+
+        except Exception as e:
+            results.append(BatchResultItem(
+                filename=filename,
+                success=False,
+                error=f"処理中にエラーが発生: {str(e)}",
+            ))
+            failed_count += 1
+
+    return BatchResponse(
+        results=results,
+        total=len(files),
+        success=success_count,
+        failed=failed_count,
+    )
+
+
+async def _process_single_pdf(
+    file: UploadFile,
+    policy_path: Optional[str],
+    use_gemini_vision: Optional[str],
+    estimate_useful_life_flag: Optional[str],
+) -> ClassifyResponse:
+    """
+    単一PDFファイルを処理する内部関数。
+    classify_pdf と同じロジックを使用。
+    """
+    trace_steps = ["pdf_upload"]
+
+    # Save uploaded PDF to temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        tmp_path = Path(tmp_file.name)
+        content = await file.read()
+        tmp_path.write_bytes(content)
+
+    try:
+        # Extract PDF using core functions
+        force_gemini = use_gemini_vision == "1"
+        extraction = extract_pdf(tmp_path, use_gemini_vision=force_gemini)
+        trace_steps.append("extract_gemini" if force_gemini else "extract")
+
+        # Convert extraction to Opal-like format
+        opal_like = extraction_to_opal(extraction)
+        trace_steps.append("extraction_to_opal")
+
+        # Normalize using adapter
+        normalized = adapt_opal_to_v1(opal_like)
+        trace_steps.append("parse")
+
+        # Load policy
+        actual_policy_path = policy_path
+        if not actual_policy_path:
+            default_policy = PROJECT_ROOT / "policies" / "company_default.json"
+            if default_policy.exists():
+                actual_policy_path = str(default_policy)
+
+        policy = load_policy(actual_policy_path)
+
+        # Classify
+        classified = classify_document(normalized, policy)
+        trace_steps.append("rules")
+
+        # Add warnings from extraction
+        warnings = extraction.get("meta", {}).get("warnings", [])
+        if warnings:
+            if "warnings" not in classified:
+                classified["warnings"] = []
+            classified["warnings"].extend(warnings)
+
+        # Format response
+        initial_response = _format_classify_response(classified, trace_steps=trace_steps.copy())
+
+        # Vertex AI Search citations (if enabled)
+        citations: List[Dict[str, Any]] = []
+        if initial_response.decision == "GUIDANCE" and VERTEX_SEARCH_AVAILABLE:
+            guidance_items = [item for item in classified.get("line_items", [])
+                            if isinstance(item, dict) and item.get("classification") == "GUIDANCE"]
+            if guidance_items:
+                item = guidance_items[0]
+                citations = get_citations_for_guidance(
+                    description=item.get("description", ""),
+                    missing_fields=initial_response.missing_fields,
+                    flags=item.get("flags", []),
+                )
+                if citations:
+                    trace_steps.append("law_search")
+                    initial_response = _format_classify_response(
+                        classified,
+                        trace_steps=trace_steps.copy(),
+                        citations=citations,
+                    )
+
+        # 耐用年数判定（CAPITAL_LIKEの場合のみ）
+        useful_life_result: Optional[Dict[str, Any]] = None
+        should_estimate = (
+            estimate_useful_life_flag == "1" or
+            _bool_env("USEFUL_LIFE_ENABLED", False)
+        )
+        if should_estimate and USEFUL_LIFE_AVAILABLE:
+            temp_response = _format_classify_response(classified, trace_steps=trace_steps.copy())
+            if temp_response.decision == "CAPITAL_LIKE":
+                capital_items = [
+                    item for item in classified.get("line_items", [])
+                    if isinstance(item, dict) and item.get("classification") == "CAPITAL_LIKE"
+                ]
+                if capital_items:
+                    desc = capital_items[0].get("description", "")
+                    useful_life_result = estimate_useful_life(desc)
+                    if useful_life_result and useful_life_result.get("useful_life_years", 0) > 0:
+                        trace_steps.append("useful_life")
+
+        trace_steps.append("format")
+        return _format_classify_response(
+            classified,
+            trace_steps=trace_steps,
+            citations=citations,
+            useful_life=useful_life_result,
+        )
+
+    finally:
+        # Clean up temporary file
+        if tmp_path.exists():
+            tmp_path.unlink()
