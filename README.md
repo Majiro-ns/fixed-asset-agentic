@@ -1,4 +1,4 @@
-# 見積書 固定資産判定 (Fixed Asset Classifier)
+# Asset Agentic — 見積書 固定資産判定 AI
 
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Gemini](https://img.shields.io/badge/Gemini%203%20Pro-thinking__level%3DHIGH-4285F4?logo=google&logoColor=white)](#)
@@ -6,7 +6,6 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![Google Cloud](https://img.shields.io/badge/Google%20Cloud-Run%20%7C%20Vertex%20AI-4285F4?logo=google-cloud&logoColor=white)](https://cloud.google.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Golden Set](https://img.shields.io/badge/Golden%20Set-100%25%20Pass-brightgreen)](data/golden/)
 
 > **Stop-first Agentic AI** — 判断が割れる場面で自動化を**止め**、人に**聞き**、判定が**変わる**設計
 
@@ -16,7 +15,7 @@
 
 ### 30秒で理解するプロジェクト概要
 
-見積書の固定資産/経費判定を支援する **Agentic AI** です。AIが「迷ったら自ら止まり、人に聞き、判定を修正する」設計（**Stop-first**）により、誤った自動化を防ぎます。
+**Asset Agentic** は、見積書の固定資産/経費判定を支援する **Agentic AI** です。AIが「迷ったら自ら止まり、人に聞き、判定を修正する」設計（**Stop-first**）により、経理担当者の認知判断の負荷を軽減します。
 
 - **CAPITAL_LIKE**: 資産として計上（確信あり → 即判定）
 - **EXPENSE_LIKE**: 経費として処理（確信あり → 即判定）
@@ -47,7 +46,7 @@ pip install -r requirements.txt && uvicorn api.main:app --reload --port 8000
 4. **判定結果**: `CAPITAL_LIKE` バッジ（緑色）と判定根拠が表示される
 5. **GUIDANCE体験**: `demo04_guidance_ambiguous.json` を選択 → 黄色バッジ → 質問に回答 → 再判定 → DIFF表示
 
-詳細なデモ手順: [DEMO_JP.md](DEMO_JP.md) | Docker詳細: [docs/DOCKER_LOCAL_SMOKE.md](docs/DOCKER_LOCAL_SMOKE.md)
+詳細なデモ手順: [DEMO_JP.md](DEMO_JP.md)
 
 ---
 
@@ -80,10 +79,7 @@ pip install -r requirements.txt && uvicorn api.main:app --reload --port 8000
 |------|------|
 | **Agentic** | Stop-first（GUIDANCE）→ `missing_fields` / `why_missing_matters` で質問 → `answers` で再判定 → Before/After DIFF 表示 |
 | **Google Cloud AI** | **Gemini 3 Pro Preview**（`thinking_level=HIGH`）/ Document AI（`USE_DOCAI=1`）/ Vertex AI Search（`VERTEX_SEARCH_ENABLED=1`）/ Cloud Run |
-| **Repro** | Docker（[DOCKER_LOCAL_SMOKE.md](docs/DOCKER_LOCAL_SMOKE.md)）、Cloud Run（[CLOUDRUN_ENV.md](docs/CLOUDRUN_ENV.md)） |
-
-**デモの台本**: [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md)
-**規約準拠**: [docs/COMPLIANCE_CHECKLIST.md](docs/COMPLIANCE_CHECKLIST.md)
+| **Repro** | Docker / Cloud Run |
 
 ---
 
@@ -116,7 +112,7 @@ response = client.models.generate_content(
 
 従来の「1明細ずつ個別判定」ではなく、**書類全体を1回のAPI呼び出しで判定**する設計。明細ごとの色分け表示により、どの項目が資産/経費に分類されたかが一目で分かります。
 
-| 従来方式 | 本システム |
+| 従来方式 | Asset Agentic |
 |----------|-----------|
 | 明細ごとに個別API呼び出し | 書類全体を1回で判定 |
 | 付随費用の見落とし | 設置費・運搬費を本体と合算 |
@@ -171,25 +167,24 @@ GUIDANCE 発生時 → flags から検索クエリ生成 → Vertex AI Search
 
 ## 概要
 
-本プロジェクトは、見積書の固定資産／費用判定において、
-**AIが判断を誤る可能性そのものを、設計で吸収する Agentic AI** を提案します。
+**Asset Agentic** は、見積書の固定資産／費用判定において、
+**AIが判断を誤る可能性そのものを、設計で吸収する Agentic AI** です。
 
 OCRや項目抽出の精度が向上しても、実務における「判断」は常に文脈依存であり、揺れを伴います。
 さらに現場では、人であってもAIであっても、その判断を十分に疑う余裕がない状況が頻発します。
 
-本システムは、この前提に立ち、**判断を無理に自動化せず、判断を行う／止めるを自律的に選択するエージェント**として設計されています。
+Asset Agentic は、この前提に立ち、**判断を無理に自動化せず、判断を行う／止めるを自律的に選択するエージェント**として設計されています。
 
 ---
 
 ## 導入効果
 
-| 指標 | 削減量 |
-|------|--------|
-| 処理時間 | **67%削減**（15分/件 → 5分/件） |
-| 年間削減時間 | **40時間**（中小企業）/ **200時間**（会計事務所） |
-| 年間削減金額 | **12万円**（中小企業）/ **80万円**（会計事務所） |
-| 判断ミス | **80%以上削減** |
-| 月末残業 | **60%削減** |
+| 効果 | 説明 |
+|------|------|
+| **認知判断の負荷軽減** | 「資産か経費か」の判断を構造化し、担当者の思考負荷を削減 |
+| **月末・決算期の集中排除** | GUIDANCE行のみを優先確認することで、判断の優先順位が明確に |
+| **属人化の解消** | エビデンス付きの判定根拠が残るため、引き継ぎ・監査対応が容易 |
+| **判断ミスの早期検知** | Stop-first設計により、曖昧な案件が自動で「要確認」に分類される |
 
 ---
 
@@ -209,17 +204,13 @@ OCRや項目抽出の精度が向上しても、実務における「判断」�
 
 ### クイック起動
 
-```powershell
-# Streamlit UI（推奨）
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\demo_ui.ps1
-
-# または手動起動
+```bash
 streamlit run ui/app_minimal.py
 ```
 
-### デモシナリオ（3-4分）
+### デモシナリオ（3分）
 
-詳細は [DEMO.md](DEMO.md) を参照。
+詳細は [DEMO_JP.md](DEMO_JP.md) を参照。
 
 1. **CAPITAL_LIKE Case** — サーバー新設工事 → 即座に資産判定
 2. **GUIDANCE Case** — 撤去・移設を含む → 停止して質問
@@ -227,7 +218,7 @@ streamlit run ui/app_minimal.py
 
 ### デモデータについて
 
-本プロジェクトで使用しているすべてのデモデータは**架空データ（ダミーデータ）**です。
+Asset Agentic で使用しているすべてのデモデータは**架空データ（ダミーデータ）**です。
 
 - `data/demo/*.json`: デモ用の架空の見積書データ
 - `data/golden/*.json`: 評価用の架空のテストケース
@@ -456,7 +447,7 @@ curl -X POST http://localhost:8000/classify \
 
 ## Cloud Run デプロイ
 
-本システムは2つのCloud Runサービスで構成されます:
+Asset Agentic は2つのCloud Runサービスで構成されます:
 
 | サービス | 役割 | URL |
 |---------|------|-----|
@@ -487,10 +478,8 @@ gcloud run deploy fixed-asset-agentic-ui \
   --set-env-vars "API_URL=https://fixed-asset-agentic-api-xxx.run.app"
 
 # 5. スモークテスト
-.\scripts\smoke_cloudrun.ps1
+curl -s https://YOUR_SERVICE_URL/health
 ```
-
-詳細: [docs/CLOUDRUN_ENV.md](docs/CLOUDRUN_ENV.md)
 
 ---
 
@@ -502,12 +491,12 @@ gcloud run deploy fixed-asset-agentic-ui \
 python scripts/eval_golden.py
 ```
 
-| Metric | Value |
-|--------|-------|
-| **Total Cases** | 10 |
-| **Passed** | 10 |
-| **Accuracy** | **100.0%** |
-| **Last Evaluated** | 2026-01-20 |
+ゴールデンセットは、Asset Agentic の判定品質を検証するための評価用テストケースです。
+「AIが間違えない」ことを保証するのではなく、**「AIが間違える前に止まる」こと**を検証しています。
+
+- 曖昧な案件で確実にGUIDANCEが発火するか
+- 明確な資産/経費を正しく振り分けるか
+- 判定根拠が構造化されて出力されるか
 
 ---
 
@@ -548,11 +537,11 @@ python scripts/eval_golden.py
 
 ### PyMuPDF (AGPL-3.0) について
 
-本プロジェクトは PDF テキスト抽出に [PyMuPDF](https://pymupdf.readthedocs.io/) を使用しています。
+Asset Agentic は PDF テキスト抽出に [PyMuPDF](https://pymupdf.readthedocs.io/) を使用しています。
 PyMuPDF は **AGPL-3.0** ライセンスで提供されており、以下の義務が発生します:
 
 - **ソースコード公開義務**: AGPL-3.0 はネットワーク経由でサービスを提供する場合にもソースコード公開を要求します
-- **本リポジトリでの充足**: 本プロジェクトは GitHub 上でソースコード全体を公開しており、AGPL-3.0 の公開義務を充足しています
+- **本リポジトリでの充足**: Asset Agentic は GitHub 上でソースコード全体を公開しており、AGPL-3.0 の公開義務を充足しています
 - **商用利用時の注意**: PyMuPDF を非公開の商用サービスで使用する場合は、[Artifex 社の商用ライセンス](https://pymupdf.readthedocs.io/en/latest/about.html)を別途取得する必要があります
 
 PyMuPDF を使用しない場合（`PDF_CLASSIFY_ENABLED=0`）、pdfplumber（MIT ライセンス）にフォールバックします。
@@ -565,7 +554,7 @@ MIT License
 
 詳細は [LICENSE](LICENSE) ファイルを参照してください。
 
-> **補足**: 本プロジェクト自体は MIT License ですが、依存ライブラリの PyMuPDF は AGPL-3.0 です。
+> **補足**: Asset Agentic 自体は MIT License ですが、依存ライブラリの PyMuPDF は AGPL-3.0 です。
 > 上記「PyMuPDF (AGPL-3.0) について」セクションを必ずご確認ください。
 
 ---
@@ -582,7 +571,7 @@ MIT License
 
 - テストを実行: `pytest`
 - コードスタイル: PEP 8準拠
-- 自動開発ルール: [INDEX.md](INDEX.md) 参照
+- 型安全: `core/schema.py` 参照
 
 ---
 
@@ -590,12 +579,12 @@ MIT License
 
 | ドキュメント | 説明 |
 |-------------|------|
-| [DEMO.md](DEMO.md) | デモ手順（3-4分） |
-| [INDEX.md](INDEX.md) | 自動開発ルール |
-| [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md) | デモ台本（最優先） |
-| [docs/COMPLIANCE_CHECKLIST.md](docs/COMPLIANCE_CHECKLIST.md) | 規約準拠チェックリスト |
-| [docs/CLOUDRUN_ENV.md](docs/CLOUDRUN_ENV.md) | Cloud Run環境変数 |
-| [docs/DOCKER_LOCAL_SMOKE.md](docs/DOCKER_LOCAL_SMOKE.md) | ローカルDockerテスト |
+| [DEMO_JP.md](DEMO_JP.md) | デモ台本（日本語・3分） |
+| [DEMO.md](DEMO.md) | Demo Runbook (English) |
+| [DEPLOY.md](DEPLOY.md) | デプロイ手順 |
+| [docs/architecture_diagram.md](docs/architecture_diagram.md) | アーキテクチャ図 |
+| [docs/technical_explanation.md](docs/technical_explanation.md) | 技術解説 |
+| [docs/use_cases.md](docs/use_cases.md) | ユースケース |
 
 ---
 

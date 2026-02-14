@@ -336,6 +336,18 @@ def classify_line_item(
         if tr.get("suggests_guidance") is True and not keyword_based:
             classification = schema.GUIDANCE
 
+    # 単価ベース判定: 単価が10万円未満の場合、個別では少額資産の可能性
+    # CAPITAL_LIKE判定でも単価が10万未満なら GUIDANCE に引き上げ（Stop-first原則）
+    unit_price = item.get("unit_price")
+    if (
+        classification == schema.CAPITAL_LIKE
+        and isinstance(unit_price, (int, float))
+        and not isinstance(unit_price, bool)
+        and unit_price < 100_000
+    ):
+        classification = schema.GUIDANCE
+        _append_flag(flags, f"tax_rule:R-UNIT-PRICE-100k:単価{int(unit_price):,}円が10万円未満のため少額資産の可能性（要確認）")
+
     label_ja = LABEL_JA[classification]
 
     if classification == schema.CAPITAL_LIKE:

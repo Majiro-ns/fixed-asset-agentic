@@ -496,15 +496,18 @@ def render_guidance_panel(result: dict) -> Optional[str]:
     ]
     if hints:
         _hint_icon = {"CAPITAL_LIKE": "\u2705", "EXPENSE_LIKE": "\U0001f4b0"}
-        hint_rows = "".join(
-            f'<div style="margin:0.2rem 0;">'
-            f'{_hint_icon.get(h["ai_hint"]["suggestion"], "\u2753")} '
-            f'{h.get("description", "")} \u2192 '
-            f'<b>{h["ai_hint"].get("suggestion_label", "")}</b>'
-            f' ({h["ai_hint"].get("confidence", 0):.0%})'
-            f'</div>'
-            for h in hints
-        )
+        _rows = []
+        for h in hints:
+            _icon = _hint_icon.get(h["ai_hint"]["suggestion"], "\u2753")
+            _desc = h.get("description", "")
+            _label = h["ai_hint"].get("suggestion_label", "")
+            _conf = h["ai_hint"].get("confidence", 0)
+            _rows.append(
+                f'<div style="margin:0.2rem 0;">'
+                f'{_icon} {_desc} \u2192 <b>{_label}</b> ({_conf:.0%})'
+                f'</div>'
+            )
+        hint_rows = "".join(_rows)
         st.markdown(
             '<div style="background:#E3F2FD;border:1px solid #90CAF9;'
             'border-radius:0.5rem;padding:0.8rem;margin:0.5rem 0;">'

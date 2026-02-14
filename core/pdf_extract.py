@@ -551,13 +551,10 @@ def _parse_line_items_from_tables(
                         for e in evidence_list if isinstance(e, dict)
                     ]
 
-                # descが空の場合のフォールバック処理（演算子優先順位を明確に）
-                if desc:
-                    item_description = desc
-                elif amt_val:
-                    item_description = f"明細({int(amt_val) if amt_val == int(amt_val) else amt_val}円)"
-                else:
-                    item_description = "品名なし"
+                # descが空の場合: 品名のない行は集計行（小計・合計・税込等）の可能性が高いためスキップ
+                if not desc:
+                    continue
+                item_description = desc
 
                 item: Dict[str, Any] = {
                     "description": item_description,
@@ -594,6 +591,9 @@ def _parse_line_items_from_text(text: str, page_no: int = 1) -> List[Dict[str, A
     num_pat = re.compile(r"[\d,]+(?:\.[\d]+)?")
     # 前行の品名を記憶（金額のみの行と紐づけるため）
     pending_desc: str = ""
+    # 数量・単価を記憶（複数行レイアウト対応）
+    pending_quantity: Optional[float] = None
+    pending_unit_price: Optional[float] = None
 
     for line in lines:
         line = line.strip()
@@ -604,6 +604,8 @@ def _parse_line_items_from_text(text: str, page_no: int = 1) -> List[Dict[str, A
         line_no_space = line.replace(" ", "").replace("　", "")
         if _SKIP_LINE_RE.match(line_no_space):
             pending_desc = ""
+            pending_quantity = None
+            pending_unit_price = None
             continue
 
         # 対策1: 日付パターンを除去してから数字抽出（金額の誤認防止）
@@ -615,12 +617,17 @@ def _parse_line_items_from_text(text: str, page_no: int = 1) -> List[Dict[str, A
         # 数字がない行 → 品名候補として記憶
         if not nums_clean:
             candidate = line.strip()
-            # 「1式」「10台」「10セット」等の数量行はスキップ（品名を上書きしない）
-            if re.fullmatch(r'\d+\s*(式|台|個|本|セット|枚|箱|組|脚|基|件|巻|袋|缶|ケース)', candidate):
+            # 「1式」「10台」「10セット」等の数量行 → 品名が既にある場合のみ数量を記憶
+            qty_match = re.fullmatch(r'(\d+)\s*(式|台|個|本|セット|枚|箱|組|脚|基|件|巻|袋|缶|ケース)', candidate)
+            if qty_match:
+                if pending_desc:
+                    pending_quantity = _parse_number(qty_match.group(1))
                 continue
             # 短すぎる・記号のみ → 無視
             if len(candidate) >= 2 and not re.fullmatch(r'[\-─━=＝]+', candidate):
                 pending_desc = candidate
+                pending_quantity = None
+                pending_unit_price = None
             continue
 
         amt = nums_clean[-1]
@@ -630,8 +637,11 @@ def _parse_line_items_from_text(text: str, page_no: int = 1) -> List[Dict[str, A
         desc_clean = re.sub(r'[円￥¥式個台本セット\s.．・]', '', desc)
 
         # 数字だけの行（単価行など）で「円」がない場合、
-        # pending_descがあれば単価行としてスキップ（金額行を待つ）
+        # pending_descがあれば単価行として記憶しスキップ（金額行を待つ）
         if not desc_clean and pending_desc and '円' not in line and '￥' not in line and '¥' not in line:
+            # 100未満の数字は行番号等の可能性が高いため単価として記憶しない
+            if amt >= 100:
+                pending_unit_price = amt
             continue
 
         # 合計行・小計行・税込行は除外（元の行テキストでも判定）
@@ -671,12 +681,24 @@ def _parse_line_items_from_text(text: str, page_no: int = 1) -> List[Dict[str, A
             "position_hint": f"page{page_no}",
             "snippets": [{"page": page_no, "method": "text", "snippet": _safe_snippet(line)}],
         }
-        items.append({
+        item_dict: Dict[str, Any] = {
             "description": final_desc,
             "amount": int(amt) if amt == int(amt) else amt,
             "evidence": evidence_obj,
-        })
+        }
+        # 数量・単価が記憶されていれば付与
+        if pending_quantity is not None:
+            item_dict["quantity"] = int(pending_quantity) if pending_quantity == int(pending_quantity) else pending_quantity
+        if pending_unit_price is not None:
+            item_dict["unit_price"] = int(pending_unit_price) if pending_unit_price == int(pending_unit_price) else pending_unit_price
+        # 数量と金額から単価を逆算（単価行がなかった場合）
+        if pending_unit_price is None and pending_quantity and pending_quantity > 1 and amt > 0:
+            calculated_up = amt / pending_quantity
+            item_dict["unit_price"] = int(calculated_up) if calculated_up == int(calculated_up) else calculated_up
+        items.append(item_dict)
         pending_desc = ""
+        pending_quantity = None
+        pending_unit_price = None
     return items
 
 

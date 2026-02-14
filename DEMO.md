@@ -1,4 +1,4 @@
-# Fixed Asset Classification - Demo Runbook
+# Asset Agentic — Demo Runbook
 
 > **Purpose**: Demo script for Agentic AI Hackathon with Google Cloud (3-4 minutes)
 > **Target Audience**: Hackathon judges, technical evaluators
@@ -59,7 +59,7 @@ streamlit run ui/app_minimal.py
 ### Narration Script
 
 > **[0:00-0:05]**
-> "Fixed Asset Classification - an Agentic AI that knows when to stop."
+> "Asset Agentic - an Agentic AI that knows when to stop."
 
 > **[0:05-0:15]**
 > "In accounting departments, classifying expenses as fixed assets or operating costs is critical for tax compliance. But AI systems that blindly automate this process create a dangerous problem: when the AI is wrong, there's no time to catch the error before month-end close."
@@ -222,7 +222,7 @@ This is the core demonstration of the **Agentic 5-step process**:
 > "The classifier uses a rule-first design with frozen schema. This means reproducible, testable decisions - not black-box AI."
 
 > **[3:20-3:30]**
-> "Golden set evaluation shows 100% accuracy on 10 test cases. The system is ready for production deployment."
+> "Golden set evaluation validates that uncertain cases trigger GUIDANCE as designed. The system is ready for demonstration."
 
 ### Point to
 - Sidebar Service URL: `https://fixed-asset-agentic-api-...`
@@ -232,7 +232,7 @@ This is the core demonstration of the **Agentic 5-step process**:
 ### Emphasis Points
 - **Google Cloud stack**: Cloud Run, Document AI, Vertex AI Search
 - **Design principle**: Rule-first, frozen schema
-- **Quality**: 100% golden set accuracy (10/10 pass)
+- **Quality**: Golden set validation: uncertain cases correctly trigger GUIDANCE
 
 ---
 

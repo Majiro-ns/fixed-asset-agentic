@@ -319,7 +319,7 @@ timeline
 
 ```mermaid
 graph LR
-    A[見積受領] --> B[本システム判定]
+    A[見積受領] --> B[Asset Agentic判定]
     B --> C{GUIDANCE?}
     C -->|Yes| D[人間確認]
     C -->|No| E[承認ワークフロー]
@@ -464,7 +464,7 @@ Host images in GitHub repository:
 
 ## システム構成
 
-本システムは以下の構成で動作します。
+Asset Agenticは以下の構成で動作します。
 
 ```mermaid
 graph TB

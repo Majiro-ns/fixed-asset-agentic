@@ -362,14 +362,14 @@ def _add_ai_hints_for_guidance(
                     "suggestion": schema.EXPENSE_LIKE,
                     "suggestion_label": "費用寄り",
                     "confidence": 0.6,
-                    "reasoning": f"「{'・'.join(kw for kw in _EXPENSE_FLAGS if kw in desc)}」を含むため費用の可能性",
+                    "reasoning": "「" + "・".join(kw for kw in _EXPENSE_FLAGS if kw in desc) + "」を含むため費用の可能性",
                 }
             elif has_capital_kw and not has_expense_kw:
                 item["ai_hint"] = {
                     "suggestion": schema.CAPITAL_LIKE,
                     "suggestion_label": "資産寄り",
                     "confidence": 0.6,
-                    "reasoning": f"「{'・'.join(kw for kw in _CAPITAL_FLAGS if kw in desc)}」を含むため資産の可能性",
+                    "reasoning": "「" + "・".join(kw for kw in _CAPITAL_FLAGS if kw in desc) + "」を含むため資産の可能性",
                 }
             elif has_expense_kw and has_capital_kw:
                 item["ai_hint"] = {

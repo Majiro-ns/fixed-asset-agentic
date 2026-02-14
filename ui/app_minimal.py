@@ -472,6 +472,7 @@ def _render_line_items_and_actions(result: dict, decision: str, show_reasons: bo
                 amt = item.get("amount", 0) or 0
                 cls = item.get("classification", "GUIDANCE")
                 reason = item.get("reason", "")
+                reason_html = f'<br><small style="color:#666">{reason}</small>' if reason else ""
                 if not desc or desc.startswith("明細(") or desc.startswith("明細（"):
                     desc = "（品名なし）"
                 amt_str = _format_amount(amt) if amt else ""
@@ -485,13 +486,14 @@ def _render_line_items_and_actions(result: dict, decision: str, show_reasons: bo
                     hint_conf = ai_hint.get("confidence", 0)
                     hint_reason = ai_hint.get("reasoning", "")
                     hint_icon = {"CAPITAL_LIKE": "\u2705", "EXPENSE_LIKE": "\U0001f4b0"}.get(hint_cls, "\u2753")
+                    reason_part = " \u2014 " + hint_reason if hint_reason else ""
                     ai_hint_html = (
                         f'<div style="background:#E3F2FD;border-left:2px solid #1976D2;'
                         f'padding:0.2rem 0.5rem;margin-top:0.2rem;border-radius:0.2rem;">'
                         f'<small style="color:#0D47A1;">'
                         f'\U0001f916 <b>AI\u53c2\u8003\u5224\u5b9a</b>: {hint_icon} {hint_label}'
                         f' (\u4fe1\u5ea6 {hint_conf:.0%})'
-                        f'{" \u2014 " + hint_reason if hint_reason else ""}'
+                        f'{reason_part}'
                         f'</small></div>'
                     )
                 st.markdown(
@@ -499,7 +501,7 @@ def _render_line_items_and_actions(result: dict, decision: str, show_reasons: bo
                     f'padding:0.4rem 0.6rem;margin-bottom:0.3rem;border-radius:0.3rem;">'
                     f'<span style="color:{style["color"]};font-weight:bold;">{style["icon"]} {style["label"]}</span>'
                     f' &nbsp; {desc} &nbsp; <b>{amt_str}</b>'
-                    f'{"<br><small style=color:#666>" + reason + "</small>" if reason else ""}'
+                    f'{reason_html}'
                     f'{ai_hint_html}'
                     f'</div>',
                     unsafe_allow_html=True,

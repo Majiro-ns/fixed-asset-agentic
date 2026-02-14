@@ -1,4 +1,4 @@
-# 将来ビジョン: Fixed Asset Agentic System
+# 将来ビジョン: Asset Agentic
 
 > **Version**: 1.0.0
 > **Last Updated**: 2026-01-30
@@ -8,9 +8,9 @@
 
 ## 1. 現状の位置づけ
 
-### 1.1 MVP/POC としての本システム
+### 1.1 MVP/POC としてのAsset Agentic
 
-本システムは **第4回 Agentic AI Hackathon with Google Cloud** 向けに開発された Proof of Concept（POC）である。
+Asset Agenticは **第4回 Agentic AI Hackathon with Google Cloud** 向けに開発された Proof of Concept（POC）である。
 
 #### 実証済みの価値
 - **Stop-first設計**: AIが判断を「行う／止める」を自律的に選択する設計パターンの実証
@@ -119,7 +119,7 @@ useful_life_master:
 
 ```mermaid
 graph LR
-    A[見積受領] --> B[本システム判定]
+    A[見積受領] --> B[Asset Agentic判定]
     B --> C{GUIDANCE?}
     C -->|Yes| D[人間確認]
     C -->|No| E[承認ワークフロー]
@@ -148,7 +148,7 @@ graph LR
 
 ### 4.1 「判断支援AI」のプラットフォーム化
 
-本システムの核心である **Stop-first設計** は、固定資産判定に限らず、あらゆる業務判断に適用可能なパターンである。
+Asset Agenticの核心である **Stop-first設計** は、固定資産判定に限らず、あらゆる業務判断に適用可能なパターンである。
 
 ```
 プラットフォーム化の方向性:
@@ -293,7 +293,7 @@ Option C: ライセンス販売
 
 ### 7.3 競合優位性
 
-| 観点 | 従来型AI自動化 | 本システム (Stop-first) |
+| 観点 | 従来型AI自動化 | Asset Agentic (Stop-first) |
 |------|----------------|------------------------|
 | **判定方式** | 全自動（強制判定） | 3値判定（止まれる） |
 | **責任境界** | 曖昧 | 明確（人間/AI分界点） |
