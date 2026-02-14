@@ -84,7 +84,7 @@ Asset Agenticは見積書の明細を**3つの値**で判定する。
 
 GUIDANCEは「誤判定」ではない。**判断すべき箇所を人間に示すための意図的な停止**だ。
 
-![GUIDANCE画面 — AIが判断を保留し、2択ボタンで人間に委ねる](SCREENSHOT_GUIDANCE_URL)
+![GUIDANCE画面 — AIが判断を保留し、2択ボタンで人間に委ねる](/images/ss_guidance.png)
 
 ### なぜ「止まる」のか
 
@@ -116,7 +116,7 @@ GUIDANCEで停止した明細には、AIによる参考判定（`ai_hint`）が�
 
 AIが「判断が割れる」と判定し、自動処理を停止する。
 
-![Stop画面 — AIが判断を保留した瞬間](SCREENSHOT_STOP_URL)
+![Stop画面 — AIが判断を保留した瞬間](/images/ss_stop.png)
 
 ### ステップ2：理由を示す
 
@@ -138,7 +138,7 @@ AIが「判断が割れる」と判定し、自動処理を停止する。
 → 修繕の場合：「修繕の頻度を教えてください」 [定期的] or [今回が初めて]
 → 新規の場合：「既存設備の入替ですか？」 [はい] or [いいえ]
 
-![2択ボタンと再判定結果](SCREENSHOT_CHOICE_URL)
+![2択ボタンと再判定結果](/images/ss_choice.png)
 
 ### ステップ4：再実行
 
@@ -148,7 +148,7 @@ AIが「判断が割れる」と判定し、自動処理を停止する。
 
 Before → After で何が変わったかを明示する。
 
-![Before/After差分表示 — 判定変化と根拠の比較](SCREENSHOT_DIFF_URL)
+![Before/After差分表示 — 判定変化と根拠の比較](/images/ss_diff.png)
 
 > **この差分は監査時の説明資料として利用できます。**
 
