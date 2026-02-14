@@ -182,7 +182,7 @@ class TestEmbeddingStoreUnit:
 
         with patch.dict(os.environ, {"GOOGLE_API_KEY": ""}, clear=True):
             store = EmbeddingStore(store_path=temp_store_path)
-            with pytest.raises(ValueError, match="GOOGLE_API_KEY"):
+            with pytest.raises(ValueError, match="認証情報が未設定"):
                 store._ensure_configured()
 
 

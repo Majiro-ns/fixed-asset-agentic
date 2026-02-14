@@ -11,9 +11,11 @@
 指定のGoogle Cloud AI製品・アプリ関連製品を用いること。
 
 ### 本プロジェクトでの実装
-- **主要技術**: Vertex AI Search / Discovery Engine を主要技術として使用
-- **実装箇所**: `api/vertex_search.py`（法令エビデンス検索機能）
-- **Feature Flag**: `VERTEX_SEARCH_ENABLED=1`（デフォルトOFF、デモ時のみON）
+- **AI技術**: Gemini 3 Pro Preview（`thinking_level=HIGH`による固定資産判定） — `api/gemini_classifier.py`
+- **AI技術**: Gemini 2.0 Flash（PDF読み取り・文書分割） — `api/gemini_splitter.py`
+- **アプリ実行**: Cloud Run（API + UI の2サービス）
+- **法令検索**: Vertex AI Search / Discovery Engine — `api/vertex_search.py`（Feature Flag: `VERTEX_SEARCH_ENABLED=1`）
+- **PDF抽出**: Document AI — `core/pdf_extract.py`（Feature Flag: `USE_DOCAI=1`）
 - **デモでの見せ方**: 
   - GUIDANCE判定時にVertex AI Searchで法令・税務ルールを検索
   - 検索結果を`citations[]`としてAPIレスポンスに含める
@@ -58,7 +60,7 @@
 使用しているOSSライブラリのライセンスを遵守し、適切に表記すること。
 
 ### 本プロジェクトでの対応
-- **表記箇所**: README.md「OSS/Licenses」セクション
+- **表記箇所**: README.md「依存ライブラリ」セクション（技術スタック内）
 - **主要依存関係**:
   - pytest (MIT)
   - streamlit (Apache 2.0)
@@ -71,7 +73,7 @@
   - google-cloud-discoveryengine (Apache 2.0)
 
 ### 確認方法
-- README.md「OSS/Licenses」セクションを確認
+- README.md「依存ライブラリ」セクション（技術スタック内）を確認
 - `requirements.txt`の依存関係とライセンス表記が一致していることを確認
 
 **ステータス**: ✅ README.mdに表記済み
@@ -164,7 +166,7 @@
 | 日本語での記載 | ✅ | README.md, DEMO.md, docs/*.md |
 | 免責・責任（運用メモ） | ✅ | README.md, DEMO.md「デモデータについて」 |
 
-**最終確認日**: 2026-01-24
+**最終確認日**: 2026-02-14
 
 ---
 

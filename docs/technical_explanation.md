@@ -80,8 +80,14 @@ core/
 └── pdf_extract.py   # PDF抽出（DocAI/PyMuPDF/pdfplumber）
 
 api/
-├── main.py          # FastAPI エンドポイント
-└── vertex_search.py # Vertex AI Search 法令検索統合
+├── main.py              # FastAPI エンドポイント
+├── gemini_classifier.py # Gemini 3 Pro 分類判定
+├── gemini_splitter.py   # Gemini 2.0 Flash PDF分割
+├── vertex_search.py     # Vertex AI Search 法令検索
+├── useful_life_estimator.py # 法定耐用年数推定
+├── history_search.py    # 過去判定履歴検索
+├── similarity_search.py # 類似事例検索
+└── embedding_store.py   # 埋め込みストア
 ```
 
 ## 2. 使用技術スタック
@@ -107,7 +113,9 @@ api/
 
 | サービス | 用途 | Feature Flag |
 |---------|------|-------------|
-| Cloud Run | APIホスティング | 常時有効 |
+| Gemini 3 Pro Preview | 固定資産判定（`thinking_level=HIGH`） | `GEMINI_ENABLED=1` |
+| Gemini 2.0 Flash | PDF読み取り・文書分割（Vision API） | `GEMINI_PDF_ENABLED=1` |
+| Cloud Run | API/UIホスティング（2サービス） | 常時有効 |
 | Document AI | PDF → テキスト抽出 | `USE_DOCAI=1` |
 | Vertex AI Search | 法令エビデンス検索 | `VERTEX_SEARCH_ENABLED=1` |
 

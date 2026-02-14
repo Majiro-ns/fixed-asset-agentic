@@ -15,7 +15,7 @@ Manual runs
 - Adapter only: `python scripts/run_adapter.py --in data/opal_outputs/01_opal.json --out data/results/01_normalized.json`
 - Full pipeline: `python scripts/run_pipeline.py --in data/opal_outputs/01_opal.json --out data/results/01_final.json`
 - PDF end-to-end: `python scripts/run_pdf.py --pdf tests/fixtures/sample_text.pdf --out data/results`
-- UI (optional): `python -m pip install -r requirements-ui.txt` then `streamlit run ui/app.py` (JSON tab + PDF tab)
+- UI (optional): `python -m pip install -r requirements-ui.txt` then `streamlit run ui/app_minimal.py` (JSON tab + PDF tab)
 - Agent run (GitHub Actions): add label `agent:run` to an Issue (or trigger workflow_dispatch). Agent will branch, run checks, push, and open a PR. It will never auto-merge.
 
 Notes
@@ -25,7 +25,7 @@ Notes
 
 PDF classification (PowerShell)
 - `python scripts/run_pdf.py --pdf tests/fixtures/sample_text.pdf --out data/results`
-- Streamlit UI: `streamlit run ui/app.py` then use the **PDF Upload** tab; files land in `data/uploads/*` and `data/results/*`.
+- Streamlit UI: `streamlit run ui/app_minimal.py` then use the **PDF Upload** tab; files land in `data/uploads/*` and `data/results/*`.
 - Environment toggles: `USE_DOCAI=true|false` (default false), `USE_LOCAL_OCR=true|false` (default false), `OCR_TEXT_THRESHOLD=<int>` (default 50). OCR is optional; if not installed, the extractor will log/flag and continue with text-only results.
 
 Optional OCR enablement (not required for CI)

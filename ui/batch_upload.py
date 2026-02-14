@@ -287,9 +287,8 @@ if __name__ == "__main__":
         layout="wide",
     )
 
-    # API URL（環境変数または デフォルト）
-    DEFAULT_API_URL = "https://fixed-asset-agentic-api-986547623556.asia-northeast1.run.app"
-    api_url = os.environ.get("API_URL", DEFAULT_API_URL)
+    # API URL（環境変数から取得、デフォルトはlocalhost）
+    api_url = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
     # 一括アップロードUIをレンダリング
     render_batch_upload(api_url)

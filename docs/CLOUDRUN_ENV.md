@@ -52,7 +52,7 @@ Cloud Run デプロイ時に設定する環境変数の一覧。未設定時は 
 |------|------|------|------|
 | `GEMINI_ENABLED` | - | 未設定＝OFF | `1` / `true` 等で有効。Gemini APIによる分類を使用。 |
 | `GOOGLE_API_KEY` | GEMINI_ENABLED時 | - | Gemini API キー。Google AI Studio で取得。 |
-| `GEMINI_MODEL` | - | `gemini-1.5-flash` | 使用するGeminiモデル名。 |
+| `GEMINI_MODEL` | - | `gemini-3-pro-preview` | 使用するGeminiモデル名。 |
 
 - **GEMINI_ENABLED=1 かつ GOOGLE_API_KEY 未設定**: フォールバックでルールベース分類を使用。
 - **エラー発生時**: Stop-first原則に従い、GUIDANCE（要確認）を返す。

@@ -9,7 +9,7 @@ Principles
 Forbidden
 - Changing tax/accounting decision rules without explicit approval (propose in PR description first).
 - Removing or downgrading evidence/rationale requirements.
-- Adding paid/external services or credentials; keep dependencies local and free.
+- Adding unapproved paid/external services or credentials without explicit approval. (Approved: Gemini API, Document AI, Vertex AI Search, Cloud Run.)
 - Major version bumps of dependencies without approval; propose instead.
 - Silently ignoring malformed input/policy; prefer safe defaults plus visible flags.
 

@@ -6,9 +6,12 @@ Uses Gemini text-embedding-004 API to generate embeddings for asset names.
 Supports batch processing with rate limiting and JSON persistence.
 """
 import json
+import logging
 import os
 import time
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("fixed_asset_api")
 
 
 class EmbeddingStore:
@@ -22,7 +25,7 @@ class EmbeddingStore:
     """
 
     # Gemini embedding model
-    EMBEDDING_MODEL = "models/text-embedding-004"
+    EMBEDDING_MODEL = "text-embedding-004"
     # Batch size for API calls (Gemini limit)
     BATCH_SIZE = 100
     # Maximum retry attempts
@@ -39,7 +42,7 @@ class EmbeddingStore:
         """
         self.store_path = store_path
         self.items: List[Dict[str, Any]] = []
-        self._genai = None
+        self._client = None
         self._configured = False
 
     def _ensure_configured(self) -> bool:
@@ -52,20 +55,23 @@ class EmbeddingStore:
         if self._configured:
             return True
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError("GOOGLE_API_KEY environment variable not set")
-
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            self._genai = genai
+            from google import genai
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+            if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true":
+                self._client = genai.Client()
+            elif api_key:
+                self._client = genai.Client(api_key=api_key)
+            else:
+                raise ValueError(
+                    "認証情報が未設定（GOOGLE_GENAI_USE_VERTEXAI=True またはAPIキー）"
+                )
             self._configured = True
             return True
         except ImportError:
             raise ImportError(
-                "google-generativeai library not installed. "
-                "Run: pip install google-generativeai"
+                "google-genai library not installed. "
+                "Run: pip install google-genai"
             )
 
     def get_embedding(self, text: str) -> List[float]:
@@ -82,14 +88,14 @@ class EmbeddingStore:
 
         for attempt in range(self.MAX_RETRIES):
             try:
-                result = self._genai.embed_content(
+                result = self._client.models.embed_content(
                     model=self.EMBEDDING_MODEL,
-                    content=text,
-                    task_type="retrieval_document"
+                    contents=text,
                 )
-                return result['embedding']
+                return result.embeddings[0].values
 
-            except Exception as e:
+            except (ConnectionError, TimeoutError, OSError, RuntimeError, ValueError) as e:
+                logger.warning("Embedding API error (attempt %d): %s", attempt + 1, e)
                 error_str = str(e).lower()
                 # Check for rate limit error
                 if "rate" in error_str or "quota" in error_str or "429" in error_str:
@@ -119,14 +125,14 @@ class EmbeddingStore:
 
         for attempt in range(self.MAX_RETRIES):
             try:
-                result = self._genai.embed_content(
+                result = self._client.models.embed_content(
                     model=self.EMBEDDING_MODEL,
-                    content=texts,
-                    task_type="retrieval_document"
+                    contents=texts,
                 )
-                return result['embedding']
+                return [e.values for e in result.embeddings]
 
-            except Exception as e:
+            except (ConnectionError, TimeoutError, OSError, RuntimeError, ValueError) as e:
+                logger.warning("Batch embedding API error (attempt %d): %s", attempt + 1, e)
                 error_str = str(e).lower()
                 # Check for rate limit error
                 if "rate" in error_str or "quota" in error_str or "429" in error_str:
@@ -192,9 +198,8 @@ class EmbeddingStore:
                 if batch_end < len(items):
                     time.sleep(0.1)
 
-            except Exception as e:
-                # Log error but continue with other batches
-                print(f"Error processing batch {batch_start}-{batch_end}: {e}")
+            except (ConnectionError, TimeoutError, OSError, RuntimeError, ValueError) as e:
+                logger.exception("Error processing embedding batch %d-%d: %s", batch_start, batch_end, e)
                 continue
 
         return added_count

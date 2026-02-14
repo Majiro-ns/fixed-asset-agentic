@@ -126,8 +126,8 @@ gcloud run services logs read fixed-asset-agentic-api --region asia-northeast1 -
 
 | 項目 | 締切 |
 |------|------|
-| 参加登録 | **2/13** |
-| プロジェクト提出 | **2/14-15** |
+| 参加登録 | **2/13（RULES2）/ 2/14（RULES）** |
+| プロジェクト提出 | **2/14（RULES2）/ 2/15（RULES）** |
 
 ---
 

@@ -69,6 +69,18 @@ Copy-Item Dockerfile Dockerfile.api.bak; Copy-Item Dockerfile.ui Dockerfile; Cop
 
 ---
 
+## Dockerセキュリティ
+
+全Dockerfileに以下のセキュリティ対策を適用済み:
+
+| 対策 | 内容 |
+|------|------|
+| **非rootユーザー** | `appuser`（appgroup）で実行。コンテナ内の権限を最小化 |
+| **HEALTHCHECK** | API用Dockerfileに `/health` エンドポイントへの死活監視を設定（30秒間隔） |
+| **最小パッケージ** | `--no-install-recommends` で不要パッケージを排除 |
+
+---
+
 ## 5. 動作確認
 
 ```powershell

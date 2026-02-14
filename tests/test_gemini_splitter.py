@@ -153,8 +153,9 @@ class TestDetectDocumentBoundaries:
 
         # Ensure no API key
         with patch.dict(os.environ, {}, clear=True):
-            # Remove GOOGLE_API_KEY if it exists
+            # Remove API keys if they exist
             os.environ.pop("GOOGLE_API_KEY", None)
+            os.environ.pop("GEMINI_API_KEY", None)
 
             result = detect_document_boundaries(b"fake image bytes", total_pages=3)
 
@@ -162,7 +163,7 @@ class TestDetectDocumentBoundaries:
         assert result[0]["start_page"] == 1
         assert result[0]["end_page"] == 3
         assert "error" in result[0]
-        assert "GOOGLE_API_KEY" in result[0]["error"]
+        assert "認証情報が未設定" in result[0]["error"]
 
     @patch("api.gemini_splitter.genai", create=True)
     @patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"})

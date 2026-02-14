@@ -149,3 +149,130 @@ def test_evidence_tax_rules_reflects_flags_600k():
     assert len(tax_rule_ev) >= 1
     all_tax = [f for e in tax_rule_ev for f in e["tax_rules"] if isinstance(f, str) and f.startswith("tax_rule:")]
     assert any("R-AMOUNT-600k" in t for t in all_tax)
+
+
+# ---------------------------------------------------------------------------
+# TC-040-05: Multi-item aggregation tests
+# ---------------------------------------------------------------------------
+def _make_doc_with_items(items):
+    """Helper to build a minimal doc dict for _format_classify_response."""
+    return {
+        "version": "v1.0",
+        "document_info": {"vendor": "Test"},
+        "line_items": items,
+        "totals": {},
+    }
+
+
+def test_multi_item_all_capital():
+    """TC-040-05a: All CAPITAL_LIKE items → document decision CAPITAL_LIKE."""
+    doc = _make_doc_with_items([
+        {
+            "line_no": 1,
+            "description": "サーバー新設",
+            "classification": "CAPITAL_LIKE",
+            "confidence": 0.90,
+            "rationale_ja": "新設工事",
+            "flags": [],
+            "evidence": {"source_text": "サーバー新設"},
+        },
+        {
+            "line_no": 2,
+            "description": "設置工事",
+            "classification": "CAPITAL_LIKE",
+            "confidence": 0.88,
+            "rationale_ja": "設置",
+            "flags": [],
+            "evidence": {"source_text": "設置工事"},
+        },
+    ])
+    resp = _format_classify_response(doc)
+    assert resp.decision == "CAPITAL_LIKE"
+
+
+def test_multi_item_all_expense():
+    """TC-040-05b: All EXPENSE_LIKE items → document decision EXPENSE_LIKE."""
+    doc = _make_doc_with_items([
+        {
+            "line_no": 1,
+            "description": "保守点検",
+            "classification": "EXPENSE_LIKE",
+            "confidence": 0.90,
+            "rationale_ja": "保守",
+            "flags": [],
+            "evidence": {"source_text": "保守点検"},
+        },
+        {
+            "line_no": 2,
+            "description": "消耗品交換",
+            "classification": "EXPENSE_LIKE",
+            "confidence": 0.85,
+            "rationale_ja": "消耗品",
+            "flags": [],
+            "evidence": {"source_text": "消耗品交換"},
+        },
+    ])
+    resp = _format_classify_response(doc)
+    assert resp.decision == "EXPENSE_LIKE"
+
+
+def test_multi_item_mixed():
+    """TC-040-05c: CAPITAL + EXPENSE mixed → document decision GUIDANCE."""
+    doc = _make_doc_with_items([
+        {
+            "line_no": 1,
+            "description": "サーバー購入",
+            "classification": "CAPITAL_LIKE",
+            "confidence": 0.90,
+            "rationale_ja": "購入",
+            "flags": [],
+            "evidence": {"source_text": "サーバー購入"},
+        },
+        {
+            "line_no": 2,
+            "description": "保守点検",
+            "classification": "EXPENSE_LIKE",
+            "confidence": 0.85,
+            "rationale_ja": "保守",
+            "flags": [],
+            "evidence": {"source_text": "保守点検"},
+        },
+    ])
+    resp = _format_classify_response(doc)
+    assert resp.decision == "GUIDANCE"
+
+
+def test_multi_item_with_guidance():
+    """TC-040-05d: CAPITAL + GUIDANCE → majority vote (CAPITAL wins when more)."""
+    doc = _make_doc_with_items([
+        {
+            "line_no": 1,
+            "description": "サーバー新設",
+            "classification": "CAPITAL_LIKE",
+            "confidence": 0.90,
+            "rationale_ja": "新設",
+            "flags": [],
+            "evidence": {"source_text": "サーバー新設"},
+        },
+        {
+            "line_no": 2,
+            "description": "設置工事",
+            "classification": "CAPITAL_LIKE",
+            "confidence": 0.88,
+            "rationale_ja": "設置",
+            "flags": [],
+            "evidence": {"source_text": "設置工事"},
+        },
+        {
+            "line_no": 3,
+            "description": "撤去費",
+            "classification": "GUIDANCE",
+            "confidence": 0.55,
+            "rationale_ja": "撤去",
+            "flags": ["mixed_keyword:撤去"],
+            "evidence": {"source_text": "撤去費"},
+        },
+    ])
+    resp = _format_classify_response(doc)
+    # 2 CAPITAL vs 0 EXPENSE vs 1 GUIDANCE → CAPITAL_LIKE wins by majority
+    assert resp.decision == "CAPITAL_LIKE"

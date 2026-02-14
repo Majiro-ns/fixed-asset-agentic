@@ -106,11 +106,20 @@ git commit -m "feat: 新機能5種追加（PDF分割、類似検索、バッチ�
 ## 次のステップ（提出まで）
 
 1. ✅ 全機能実装完了
-2. ⏳ Gitコミット（殿のアクション待ち）
+2. ✅ Gitコミット完了（cbb48d7）
 3. ⏳ Cloud Runデプロイ（API + UI）
-4. ⏳ デモ動画撮影
+   - 環境変数設定: `GEMINI_MODEL=gemini-3-pro-preview`, `GEMINI_SPLITTER_MODEL=gemini-3-pro-preview`
+4. ⏳ デモ動画撮影（2/8予定）
 5. ⏳ YouTube公開
 6. ⏳ Zenn記事更新・公開
 7. ⏳ 提出（締切: 2/13）
+
+---
+
+## ⚠️ デプロイ前チェックリスト
+
+- [ ] **開発者オプションをUIから削除する**
+  - `ui/app_minimal.py` の「🔧 開発者向け」セクションを削除またはコメントアウト
+  - デバッグ表示トグルを本番UIから隠す
 
 ---

@@ -1,12 +1,29 @@
 import datetime
 import hashlib
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+logger = logging.getLogger("fixed_asset_api")
+
 OCR_TEXT_THRESHOLD_DEFAULT = 50
 TEXT_TOO_SHORT_CODE = "TEXT_TOO_SHORT"
+
+# 日付パターン（金額誤認防止: 数字抽出前に除去する）
+_DATE_RE = re.compile(
+    r'(?:\d{2,4}年\d{1,2}月\d{1,2}日)'      # 2026年2月14日
+    r'|(?:令和\d{1,2}年\d{1,2}月\d{1,2}日)'  # 令和8年2月14日
+    r'|(?:R\d{1,2}\.\d{1,2}\.\d{1,2})'       # R8.2.14
+    r'|(?:\d{2,4}/\d{1,2}/\d{1,2})'          # 2026/2/14
+    r'|(?:\d{2,4}-\d{1,2}-\d{1,2})'          # 2026-02-14
+)
+
+# 日付ラベル行パターン（明細として誤認されやすい行を除外）
+_DATE_LABEL_RE = re.compile(
+    r'^(報告日|発行日|請求日|納品日|見積日|作成日|日付|Date)'
+)
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -19,7 +36,7 @@ def _bool_env(name: str, default: bool = False) -> bool:
 def _int_env(name: str, default: int) -> int:
     try:
         return int(os.getenv(name, default))
-    except Exception:
+    except (TypeError, ValueError):
         return default
 
 
@@ -66,8 +83,8 @@ def _extract_all_tables_pdfplumber(path: Path) -> Dict[int, List[List[List[Optio
                 tables = _extract_tables_from_plumber_page(page)
                 if tables:
                     out[i + 1] = tables
-    except Exception:
-        pass
+    except (OSError, ValueError, TypeError) as e:
+        logger.warning("pdfplumber table extraction failed: %s", e)
     return out
 
 
@@ -80,7 +97,8 @@ def _extract_tables_from_plumber_page(plumber_page: Any) -> List[List[List[Optio
         if not tables:
             return []
         return [[[str(c).strip() if c is not None else "" for c in row] for row in t] for t in tables]
-    except Exception:
+    except (ValueError, TypeError, AttributeError) as e:
+        logger.debug("Table extraction from plumber page failed: %s", e)
         return []
 
 
@@ -95,7 +113,8 @@ def _extract_with_pdfplumber(path: Path) -> Optional[List[Dict[str, Any]]]:
         for i, page in enumerate(pdf.pages):
             try:
                 text = page.extract_text() or ""
-            except Exception:
+            except (ValueError, TypeError, AttributeError) as e:
+                logger.debug("pdfplumber text extraction failed on page %d: %s", i + 1, e)
                 text = ""
             tables = _extract_tables_from_plumber_page(page)
             pages.append({"page": i + 1, "text": text, "tables": tables, "_plumber_page": page})
@@ -114,7 +133,8 @@ def _ocr_page_via_fitz(page_obj: Any) -> Optional[str]:
         mode = "RGB" if pix.alpha == 0 else "RGBA"
         img = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
         return pytesseract.image_to_string(img)
-    except Exception:
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("OCR via fitz failed: %s", e)
         return None
 
 
@@ -139,13 +159,10 @@ def _try_gemini_vision(path: Path) -> Optional[Dict[str, Any]]:
     if not _bool_env("GEMINI_PDF_ENABLED", False):
         return None
 
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        return None
-
     try:
         import fitz  # PyMuPDF for PDF to image
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
         from PIL import Image
         import io
         import json
@@ -153,9 +170,15 @@ def _try_gemini_vision(path: Path) -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        # Configure Gemini
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        # Configure Gemini (Vertex AI or AI Studio) with RISK-003 timeout
+        _http_opts = types.HttpOptions(timeout=30_000)
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true":
+            client = genai.Client(http_options=_http_opts)
+        elif api_key:
+            client = genai.Client(api_key=api_key, http_options=_http_opts)
+        else:
+            return None
 
         # Convert PDF to images
         doc = fitz.open(str(path))
@@ -198,9 +221,10 @@ def _try_gemini_vision(path: Path) -> Optional[Dict[str, Any]]:
 - 読み取れない場合は空配列 [] を返す"""
 
         # Send to Gemini Vision
-        response = model.generate_content(
-            [prompt] + images,
-            generation_config=genai.GenerationConfig(
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[prompt] + images,
+            config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 temperature=0.1,
             ),
@@ -252,7 +276,8 @@ def _try_gemini_vision(path: Path) -> Optional[Dict[str, Any]]:
             "total": result.get("total"),
         }
 
-    except Exception:
+    except (ConnectionError, TimeoutError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("Gemini Vision extraction failed: %s", e)
         return None
 
 
@@ -290,7 +315,8 @@ def _try_docai(path: Path) -> Optional[Dict[str, Any]]:
             },
             "pages": [{"page": 1, "text": text, "method": "docai"}],
         }
-    except Exception:
+    except (ConnectionError, TimeoutError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("Document AI extraction failed: %s", e)
         return None
 
 
@@ -393,24 +419,31 @@ _TOTAL_KEYWORDS = frozenset({
     "送料", "運賃", "配送料", "手数料", "振込手数料",
     "TOTAL", "Total", "total", "SUBTOTAL", "Subtotal", "subtotal",
     "TAX", "Tax", "tax", "合計金額", "ご請求金額", "お見積金額",
+    "年間合計", "月間合計", "年合計", "総額",
 })
 
 
-def _is_total_row(desc: str) -> bool:
+def _is_total_row(desc: str, original_line: str = "") -> bool:
     """
     Check if the description indicates a total/subtotal row that should be excluded.
     合計行・小計行・税込行などを除外するための判定。
+    original_line が与えられた場合、数字を除去する前の元テキストでも判定する。
     """
-    if not desc:
-        return False
-    # 完全一致チェック
-    normalized = desc.strip().replace(" ", "").replace("　", "")
-    if normalized in _TOTAL_KEYWORDS:
-        return True
-    # 先頭一致チェック（「合計:」「小計　」など）
-    for keyword in _TOTAL_KEYWORDS:
-        if normalized.startswith(keyword):
-            return True
+    for text in (desc, original_line):
+        if not text:
+            continue
+        normalized = text.strip().replace(" ", "").replace("　", "")
+        # 数字・記号を除去して判定（「消費税 100,000円」→「消費税円」）
+        normalized_no_num = re.sub(r"[\d,，.、]+", "", normalized)
+        normalized_no_num = normalized_no_num.replace("円", "").replace("￥", "").replace("¥", "").strip()
+        for candidate in (normalized, normalized_no_num):
+            if not candidate:
+                continue
+            if candidate in _TOTAL_KEYWORDS:
+                return True
+            for keyword in _TOTAL_KEYWORDS:
+                if candidate.startswith(keyword):
+                    return True
     return False
 
 
@@ -541,45 +574,109 @@ def _parse_line_items_from_tables(
     return line_items
 
 
+_SKIP_LINE_RE = re.compile(
+    r'^(見積番号|御見積金額|お見積金額|ご請求金額|御請求金額|請求番号'
+    r'|発行日|発注日|件名|No\s|品名|品目|摘要|項目|数量|金額|単価|納期|支払条件'
+    r'|備考|【|御\s*見\s*積\s*書|発\s*注\s*書|株式会社|御中|〒|\d{3}-\d{4}'
+    r'|・|─|━|＝|==|--'
+    r'|発注番号|発注元|担当者|契約期間|対象設備|サービス内容)',
+    re.IGNORECASE,
+)
+
+
 def _parse_line_items_from_text(text: str, page_no: int = 1) -> List[Dict[str, Any]]:
     """
     Fallback: parse line-like patterns from text.
-    Matches: description followed by numbers (qty unit amount or amount only).
+    Handles multi-line table layouts where description and amount are on separate lines.
     """
     items: List[Dict[str, Any]] = []
     lines = text.split("\n")
     num_pat = re.compile(r"[\d,]+(?:\.[\d]+)?")
+    # 前行の品名を記憶（金額のみの行と紐づけるため）
+    pending_desc: str = ""
+
     for line in lines:
         line = line.strip()
-        if len(line) < 3:
+        if len(line) < 2:
             continue
-        nums = num_pat.findall(line)
+
+        # ヘッダー・メタ行はスキップ
+        line_no_space = line.replace(" ", "").replace("　", "")
+        if _SKIP_LINE_RE.match(line_no_space):
+            pending_desc = ""
+            continue
+
+        # 対策1: 日付パターンを除去してから数字抽出（金額の誤認防止）
+        line_for_nums = _DATE_RE.sub('', line)
+        nums = num_pat.findall(line_for_nums)
         nums_clean = [_parse_number(n) for n in nums]
         nums_clean = [n for n in nums_clean if n is not None and n > 0]
+
+        # 数字がない行 → 品名候補として記憶
         if not nums_clean:
+            candidate = line.strip()
+            # 「1式」「10台」「10セット」等の数量行はスキップ（品名を上書きしない）
+            if re.fullmatch(r'\d+\s*(式|台|個|本|セット|枚|箱|組|脚|基|件|巻|袋|缶|ケース)', candidate):
+                continue
+            # 短すぎる・記号のみ → 無視
+            if len(candidate) >= 2 and not re.fullmatch(r'[\-─━=＝]+', candidate):
+                pending_desc = candidate
             continue
+
         amt = nums_clean[-1]
         desc = num_pat.sub("", line).strip()
         desc = re.sub(r"\s+", " ", desc).strip()
+        # 残った文字が「円」「式」等のみなら品名としては空
+        desc_clean = re.sub(r'[円￥¥式個台本セット\s.．・]', '', desc)
 
-        # 合計行・小計行・税込行は除外
-        if _is_total_row(desc):
+        # 数字だけの行（単価行など）で「円」がない場合、
+        # pending_descがあれば単価行としてスキップ（金額行を待つ）
+        if not desc_clean and pending_desc and '円' not in line and '￥' not in line and '¥' not in line:
             continue
 
-        if not desc:
-            desc = f"明細({int(amt)}円)"
+        # 合計行・小計行・税込行は除外（元の行テキストでも判定）
+        if _is_total_row(desc, line):
+            pending_desc = ""
+            continue
+
+        # 対策2: 日付ラベル行は明細ではないのでスキップ
+        desc_stripped = desc.replace(' ', '').replace('\u3000', '')
+        if _DATE_LABEL_RE.match(desc_stripped):
+            pending_desc = ""
+            continue
+
+        # pending_desc が合計キーワードなら、この金額行も合計の一部として除外
+        if pending_desc and _is_total_row(pending_desc):
+            pending_desc = ""
+            continue
+
+        # 品名の決定: 同一行に品名があればそれを使う、なければ前行の品名
+        if desc_clean:
+            final_desc = desc
+        elif pending_desc:
+            final_desc = pending_desc
+        else:
+            final_desc = ""
+
+        if not final_desc:
+            # 品名なし＋合計でもない → 孤立した数字行（ヘッダの金額等）はスキップ
+            pending_desc = ""
+            continue
+
         if amt < 10 or amt > 10_000_000_000:
             continue
+
         evidence_obj: Dict[str, Any] = {
             "source_text": line[:300],
             "position_hint": f"page{page_no}",
             "snippets": [{"page": page_no, "method": "text", "snippet": _safe_snippet(line)}],
         }
         items.append({
-            "description": desc,
+            "description": final_desc,
             "amount": int(amt) if amt == int(amt) else amt,
             "evidence": evidence_obj,
         })
+        pending_desc = ""
     return items
 
 

@@ -1,5 +1,7 @@
 import datetime
 import json
+import os
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -9,6 +11,41 @@ from core.pdf_extract import extract_pdf, extraction_to_opal
 from core.policy import load_policy
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def cleanup_old_files(directory: Path, max_age_hours: int = 24) -> int:
+    """Delete files older than max_age_hours from the specified directory.
+
+    Returns the number of deleted files.
+    """
+    directory = Path(directory)
+    if not directory.exists():
+        return 0
+    now = time.time()
+    max_age_seconds = max_age_hours * 3600
+    deleted = 0
+    for filepath in directory.iterdir():
+        if filepath.is_file():
+            try:
+                age = now - filepath.stat().st_mtime
+                if age > max_age_seconds:
+                    filepath.unlink()
+                    deleted += 1
+            except OSError:
+                pass
+    return deleted
+
+
+def _cleanup_data_directories() -> None:
+    """Clean up old files in data/uploads/ and data/results/ directories."""
+    uploads_dir = PROJECT_ROOT / "data" / "uploads"
+    results_dir = PROJECT_ROOT / "data" / "results"
+    cleanup_old_files(uploads_dir, max_age_hours=24)
+    cleanup_old_files(results_dir, max_age_hours=24)
+
+
+# Run cleanup on module load (app startup)
+_cleanup_data_directories()
 
 
 def _read_text_auto(path: str) -> str:

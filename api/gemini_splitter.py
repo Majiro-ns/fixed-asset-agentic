@@ -99,24 +99,25 @@ def detect_document_boundaries(
         }
     ]
 
-    # Check API key
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        default_response[0]["error"] = "GOOGLE_API_KEYが未設定"
-        return default_response
-
     try:
         # Import only when needed
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
         from PIL import Image
         import io
 
-        # Configure API
-        genai.configure(api_key=api_key)
+        # Configure API (Vertex AI or AI Studio)
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true":
+            client = genai.Client()
+        elif api_key:
+            client = genai.Client(api_key=api_key)
+        else:
+            default_response[0]["error"] = "認証情報が未設定"
+            return default_response
 
         # Get model
         model_name = _get_model_name()
-        model = genai.GenerativeModel(model_name=model_name)
 
         # Convert bytes to PIL Image
         image = Image.open(io.BytesIO(grid_image))
@@ -127,9 +128,10 @@ def detect_document_boundaries(
             prompt += f"\n\n【参考情報】このPDFは全{total_pages}ページです。"
 
         # Generate response with JSON output
-        response = model.generate_content(
-            [prompt, image],
-            generation_config=genai.GenerationConfig(
+        response = client.models.generate_content(
+            model=model_name,
+            contents=[prompt, image],
+            config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 temperature=0.1,  # Low temperature for consistent results
             ),
@@ -194,12 +196,12 @@ def _parse_boundary_response(
                 }
             ]
 
-    # Extract documents array
-    documents = result.get("documents", [])
-
     # Handle case where result is the array itself
     if isinstance(result, list):
         documents = result
+    else:
+        # Extract documents array
+        documents = result.get("documents", [])
 
     # If no documents found, return default
     if not documents:

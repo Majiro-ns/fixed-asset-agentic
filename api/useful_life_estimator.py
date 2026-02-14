@@ -13,11 +13,13 @@ from typing import Any, Dict, List, Optional
 
 # Optional: Google Generative AI (Gemini)
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
     genai = None
+    types = None
 
 
 # ============================================================================
@@ -157,22 +159,24 @@ def _call_gemini_api(prompt: str) -> Optional[Dict[str, Any]]:
     if not GENAI_AVAILABLE:
         return None
 
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        return None
-
     try:
-        genai.configure(api_key=api_key)
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true":
+            client = genai.Client()
+        elif api_key:
+            client = genai.Client(api_key=api_key)
+        else:
+            return None
 
-        # Use Gemini 2.0 Flash for fast response
-        model = genai.GenerativeModel("gemini-2.0-flash")
-
-        response = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.1,  # Low temperature for consistent results
-                "max_output_tokens": 500,
-            }
+        response = client.models.generate_content(
+            model="gemini-3-pro-preview",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction="あなたは日本の税務に詳しい専門家です。減価償却資産の耐用年数等に関する省令に基づいて、法定耐用年数を正確に推定してください。JSON形式のみで回答してください。",
+                response_mime_type="application/json",
+                temperature=0.1,
+                thinking_config=types.ThinkingConfig(thinking_level="HIGH"),
+            )
         )
 
         # Parse JSON from response

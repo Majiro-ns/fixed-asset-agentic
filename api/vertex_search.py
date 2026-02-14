@@ -3,8 +3,11 @@
 Vertex AI Search (Discovery Engine) integration for legal/regulation citations.
 Feature-flagged: Only active when VERTEX_SEARCH_ENABLED=1 and credentials configured.
 """
+import logging
 import os
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("fixed_asset_api")
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -95,8 +98,8 @@ def search_legal_citations(
     except ImportError:
         # google-cloud-discoveryengine not installed
         return []
-    except Exception:
-        # Any other error: graceful degradation
+    except (ConnectionError, TimeoutError, OSError, RuntimeError, ValueError) as e:
+        logger.exception("Vertex AI Search failed: %s", e)
         return []
 
 

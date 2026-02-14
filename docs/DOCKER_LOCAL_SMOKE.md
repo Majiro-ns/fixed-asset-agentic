@@ -7,7 +7,7 @@ Cloud Run の `ContainerImageImportFailed` 切り分けのため、**gcloud を�
 ## 1. ビルド
 
 ```powershell
-cd c:\Users\owner\Desktop\fixed-asset-agentic-repo
+cd c:\Users\owner\Desktop\fixed-asset-ashigaru
 docker build -t fixed-asset-api .
 ```
 
@@ -73,7 +73,7 @@ $env:DOCKER_SMOKE_URL = "http://localhost:8080"
 **ターミナル 1（起動）:**
 
 ```powershell
-cd c:\Users\owner\Desktop\fixed-asset-agentic-repo
+cd c:\Users\owner\Desktop\fixed-asset-ashigaru
 docker build -t fixed-asset-api .
 docker run --rm -e PORT=8080 -p 8080:8080 fixed-asset-api
 ```
@@ -81,6 +81,6 @@ docker run --rm -e PORT=8080 -p 8080:8080 fixed-asset-api
 **ターミナル 2（スモーク、起動後に実行）:**
 
 ```powershell
-cd c:\Users\owner\Desktop\fixed-asset-agentic-repo
+cd c:\Users\owner\Desktop\fixed-asset-ashigaru
 .\scripts\docker_smoke.ps1
 ```

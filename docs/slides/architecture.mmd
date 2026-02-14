@@ -1,0 +1,20 @@
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#F59E0B', 'primaryTextColor': '#FFFFFF', 'primaryBorderColor': '#D97706', 'lineColor': '#9CA3AF', 'secondaryColor': '#1F2937', 'tertiaryColor': '#111827', 'fontSize': '20px', 'fontFamily': 'Noto Sans JP, sans-serif', 'nodeTextColor': '#FFFFFF'}}}%%
+graph TB
+    User["🧑 ユーザー"] -->|見積書PDF| UI["UI<br/>Cloud Run<br/>Streamlit"]
+    UI -->|POST /classify_pdf| API["API<br/>Cloud Run<br/>FastAPI"]
+    API -->|PDF解析| Flash["Gemini 2.0 Flash<br/>Vision"]
+    Flash -->|抽出結果| API
+    API -->|全明細一括| Pro["Gemini 3 Pro<br/>thinking=HIGH"]
+    Pro -->|3値判定| API
+    API -->|GUIDANCE時| VS["Vertex AI Search"]
+    VS -->|法令エビデンス| API
+    API -->|ユーザー回答| Pro
+    Pro -->|再判定| API
+    API -->|diff表示| UI
+
+    style User fill:#6B7280,stroke:#9CA3AF,color:#fff
+    style UI fill:#34a853,stroke:#137333,color:#fff
+    style API fill:#4285f4,stroke:#1a73e8,color:#fff
+    style Flash fill:#ea4335,stroke:#c5221f,color:#fff
+    style Pro fill:#ea4335,stroke:#c5221f,color:#fff
+    style VS fill:#fbbc04,stroke:#f9ab00,color:#000

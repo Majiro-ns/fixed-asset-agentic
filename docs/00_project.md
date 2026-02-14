@@ -9,9 +9,10 @@ Scope
 - CLI helpers: scripts/run_adapter.py, scripts/run_pipeline.py.
 - Policy extension: policies/company_default.json or custom policy via POLICY_PATH.
 - Sample data: data/opal_outputs/*.json and derived results.
-- UI demo: ui/app.py (Streamlit) for interactive review.
+- UI demo: ui/app_minimal.py (Streamlit) for interactive review.
 
 Non-goals
 - No production accounting/tax advice; classifications stay stop-first and require human review.
-- No external services, paid APIs, or credentials.
 - No changes to OCR (Opal output is treated as input).
+
+Google Cloud AI services (Gemini API, Document AI, Vertex AI Search, Cloud Run) are approved and in use.

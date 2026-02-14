@@ -41,6 +41,10 @@ class JapanesePDF(FPDF):
             ("C:/Windows/Fonts/msgothic.ttc", "MSGothic"),
             ("C:/Windows/Fonts/meiryo.ttc", "Meiryo"),
             ("C:/Windows/Fonts/YuGothM.ttc", "YuGothic"),
+            # WSL paths
+            ("/mnt/c/Windows/Fonts/msgothic.ttc", "MSGothic"),
+            ("/mnt/c/Windows/Fonts/meiryo.ttc", "Meiryo"),
+            ("/mnt/c/Windows/Fonts/YuGothM.ttc", "YuGothic"),
         ]
 
         self.font_name = None
@@ -219,7 +223,7 @@ def create_expense_pdf():
     pdf.set_jp_font(10)
     pdf.cell(0, 6, "定期点検費用 ..................... 40,000円", ln=True)
     pdf.cell(0, 6, "保守基本料金 ..................... 50,000円", ln=True)
-    pdf.cell(0, 6, "緊急対応費用（基本枠）............. 10,000円", ln=True)
+    pdf.cell(0, 6, "緊急修理対応費用（基本枠）......... 10,000円", ln=True)
     pdf.ln(3)
     pdf.cell(0, 6, "─────────────────────────", ln=True)
     pdf.cell(0, 6, "小計 ............................. 100,000円", ln=True)

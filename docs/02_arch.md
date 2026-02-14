@@ -1,11 +1,12 @@
 ﻿# 02_arch: Structure and Responsibilities
 
 Directories
-- core/: adapter (normalize Opal), classifier (rule-based labels), policy (safe loading), schema (frozen v1.0), pipeline (adapter+classifier wiring).
+- core/: adapter (normalize Opal), classifier (rule-based labels), policy (safe loading), schema (frozen v1.0), pipeline (adapter+classifier wiring), pdf_extract (PDF extraction with DocAI/PyMuPDF fallback), pdf_splitter, ledger_import.
+- api/: main.py (FastAPI endpoints on Cloud Run), gemini_classifier.py (Gemini 3 Pro classification with thinking_level=HIGH), gemini_splitter.py (Gemini 2.0 Flash PDF splitting), vertex_search.py (legal citation search), useful_life_estimator.py, history_search.py, similarity_search.py, embedding_store.py.
 - scripts/: run_adapter.py, run_pipeline.py (CLI entry points).
-- data/: opal_outputs/ samples, results/ outputs.
+- data/: demo/ samples, golden/ evaluation set, results/ outputs.
 - policies/: company_default.json (optional policy hook; fallback is empty policy).
-- ui/: Streamlit demo reading adapter/classifier.
+- ui/: app_minimal.py (Streamlit main UI), app_classic.py (legacy), components/ (hero, input, result_card, guidance_panel, diff_display).
 
 Data flow
 1) Opal JSON -> adapt_opal_to_v1 (core/adapter.py) -> normalized schema v1.0.

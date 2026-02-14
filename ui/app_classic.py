@@ -18,22 +18,22 @@ from core.policy import load_policy
 from core.pdf_extract import extract_pdf, extraction_to_opal
 from core.pipeline import run_pdf_pipeline
 
-APP_TITLE = "見積書 固定資産判定（Opal抽出 × Agentic判定）"
-APP_SUB = "Opal項目抽出 / Agent判定処理（Stop設計）"
+APP_TITLE = "見積書 固定資産判定（自動抽出 × 自動判定）"
+APP_SUB = "項目抽出 / 自動判定処理（確認ポイント）"
 TAGLINE = "疑わしい行は止める。人が見るべき行だけ残す。"
 
 VALUE_STATEMENT = "AIが迷う行では自動判定を止め、人が確認すべき行だけを浮かび上がらせます。"
 VALUE_BULLETS = [
     "固定資産/費用判定の誤りを防ぐ",
-    "判断根拠（flags）が残り、後から検証できる",
-    "AIに責任を押し付けない、責任境界の設計提案",
+    "判断根拠（注意事項）が残り、後から検証できる",
+    "AIに責任を押し付けない、責任境界の明確化",
 ]
 
-STEP1 = "Step1｜Opal抽出（揺れるJSON）"
-STEP2 = "Step2｜Adapter正規化（凍結スキーマ v1.0）"
-STEP3 = "Step3｜Classifier判定（3値・断定しない）"
+STEP1 = "Step1｜データ抽出（入力データの補正）"
+STEP2 = "Step2｜変換処理（データ形式の固定 v1.0）"
+STEP3 = "Step3｜自動判定（3値・断定しない）"
 
-STOP_NOTE = "要確認は精度不足ではなく、判断停止（Stop設計）です。"
+STOP_NOTE = "要確認は精度不足ではなく、判断停止（確認ポイント）です。"
 STEP_LABELS = ["Step1 抽出", "Step2 正規化", "Step3 判定"]
 
 SAMPLE_DIR = ROOT_DIR / "data" / "opal_outputs"
@@ -76,7 +76,7 @@ def _to_table_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         rationale_ja = it.get("rationale_ja") or ""
         flags = it.get("flags") or []
         flags_str_raw = ", ".join(flags) if isinstance(flags, list) else str(flags)
-        flags_str = f"flags: {flags_str_raw}" if flags_str_raw else ""
+        flags_str = flags_str_raw if flags_str_raw else ""
         amount_display: Any = amount
         if isinstance(amount, (int, float)) and not isinstance(amount, bool):
             try:
@@ -104,10 +104,10 @@ def _to_table_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "description": desc,
                 "amount_display": amount_display,
                 "label_ja": label_ja,
-                "classification": cls,
-                "rationale_ja": rationale_ja,
-                "flags": flags_str,
-                "evidence": evidence_short,
+                "分類結果": cls,
+                "判定理由": rationale_ja,
+                "注意事項": flags_str,
+                "根拠": evidence_short,
             }
         )
     return rows
@@ -116,7 +116,7 @@ def _to_table_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def _render_dataframe(rows: List[Dict[str, Any]]) -> None:
     if rows:
         ordered_rows: List[Dict[str, Any]] = []
-        preferred = ["description", "amount_display", "classification", "rationale_ja", "flags", "evidence"]
+        preferred = ["description", "amount_display", "分類結果", "判定理由", "注意事項", "根拠"]
         for r in rows:
             ordered: Dict[str, Any] = {}
             for key in preferred:
@@ -139,7 +139,7 @@ def _render_dataframe(rows: List[Dict[str, Any]]) -> None:
 
 def _sort_rows_for_review(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     order = {"GUIDANCE": 0, "CAPITAL_LIKE": 1, "EXPENSE_LIKE": 2}
-    return sorted(rows, key=lambda r: order.get(str(r.get("classification", "")).upper(), 9))
+    return sorted(rows, key=lambda r: order.get(str(r.get("分類結果", "")).upper(), 9))
 
 
 def _summarize_flags(flags: Any) -> Optional[str]:
@@ -252,8 +252,8 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
             st.write(STEP2)
             st.write(STEP3)
 
-        st.markdown("## Step1｜入力（Opal抽出JSON）")
-        st.caption("OpalがOCR・項目抽出までを担当します。ここでサンプル選択またはJSON貼付を行います。")
+        st.markdown("## Step1｜入力（抽出データJSON）")
+        st.caption("判定エンジンがOCR・項目抽出までを担当します。ここでサンプル選択またはJSON貼付を行います。")
 
         colA, colB = st.columns([1, 1], gap="large")
 
@@ -262,7 +262,7 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
             samples: List[str] = []
             if SAMPLE_DIR.exists():
                 samples = sorted([p.name for p in SAMPLE_DIR.glob("*.json")])
-            sample_name = st.selectbox("サンプルを選択", options=(["（なし）"] + samples), index=1 if len(samples) else 0, help="デモ用のOpal JSONを選択できます")
+            sample_name = st.selectbox("サンプルを選択", options=(["（なし）"] + samples), index=1 if len(samples) else 0, help="デモ用の抽出JSONを選択できます")
 
             sample_data = None
             if sample_name and sample_name != "（なし）":
@@ -274,7 +274,7 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
         with colB:
             st.markdown("### テキスト貼付")
             pasted = st.text_area(
-                "Opal JSON を貼付（サンプル選択した場合は不要）",
+                "抽出JSON を貼付（サンプル選択した場合は不要）",
                 height=260,
                 placeholder='例: {"vendor": null, "invoice_date": "...", "line_items": [...]}',
             )
@@ -320,15 +320,15 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
         return
 
     if st.session_state.step == 1:
-        st.markdown("## Step2｜正規化（Adapter結果）")
-        st.caption("Opal抽出を固定スキーマに正規化した内容を確認します。次へ進むと判定結果が出ます。")
+        st.markdown("## Step2｜変換処理（正規化結果）")
+        st.caption("抽出データを固定形式に正規化した内容を確認します。次へ進むと判定結果が出ます。")
         st.caption(f"Policy: {st.session_state.policy_display}")
         adapted = st.session_state.adapted_doc
 
         if adapted is None:
             st.warning("Step1でサンプル選択または貼付を行い、判定ボタンを押してください。")
         else:
-            st.info("Adapter出力（主要フィールドのみ抜粋）。")
+            st.info("変換処理の出力（主要フィールドのみ抜粋）。")
             st.code(_safe_json_dumps(adapted), language="json")
 
         st.divider()
@@ -343,7 +343,7 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
         return
 
     if st.session_state.step == 2:
-        st.markdown("## Step3｜判定（Agentic）")
+        st.markdown("## Step3｜自動判定")
         opal_dict = st.session_state.opal_dict
         final_doc = st.session_state.final_doc
         st.caption(f"Policy: {st.session_state.applied_policy_display}")
@@ -385,9 +385,9 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
         st.info(STOP_NOTE)
 
         with st.container(border=True):
-            st.markdown("**Stop設計（断定しない思想）**")
-            st.write("・撤去/移設/既設など、判断が割れる可能性があれば GUIDANCE として停止します。")
-            st.write("・停止理由は flags に残し、後から検証できるようにします。")
+            st.markdown("**確認ポイント（断定しない思想）**")
+            st.write("・撤去/移設/既設など、判断が割れる可能性があれば要確認として停止します。")
+            st.write("・停止理由は注意事項に残し、後から検証できるようにします。")
             st.write("・最終的な判断（資産/費用の選択肢）は人が、現場で決める形にします。")
 
         st.markdown("### 判定結果（要確認順に表示）")
@@ -413,9 +413,9 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
                     st.write(f"分類ラベル: {selected_item.get('label_ja') or ''}")
                     st.write(f"理由: {selected_item.get('rationale_ja') or ''}")
                     if flags_str:
-                        st.write(f"flags: {flags_str}")
+                        st.write(f"注意事項: {flags_str}")
                     if source_text:
-                        st.write("evidence.source_text:")
+                        st.write("根拠テキスト:")
                         st.code(source_text, language="text")
 
                 guidance_rows: List[Dict[str, Any]] = []
@@ -430,11 +430,11 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
                         "line_no": it.get("line_no"),
                         "description": it.get("description") or "",
                         "label_ja": it.get("label_ja") or "",
-                        "rationale_ja": it.get("rationale_ja") or "",
-                        "flags": flags_str,
+                        "判定理由": it.get("rationale_ja") or "",
+                        "注意事項": flags_str,
                     }
                     if source_text:
-                        row["evidence.source_text"] = source_text
+                        row["根拠テキスト"] = source_text
                     guidance_rows.append(row)
                 st.dataframe(guidance_rows, hide_index=True, use_container_width=True)
         else:
@@ -442,10 +442,10 @@ def _render_json_flow(policy_display: str, policy_path: Optional[str]) -> None:
 
         st.markdown("### 次にやること")
         st.write("1. 要確認（GUIDANCE）の行を優先して、人が判断します。")
-        st.write("2. flags/evidence を見て、必要なら見積書原本に戻って確認します。")
+        st.write("2. 注意事項/根拠を見て、必要なら見積書原本に戻って確認します。")
         st.write("3. 判断結果をJSONとして保存・共有できます。")
 
-        with st.expander("Opal JSON（生データ）", expanded=False):
+        with st.expander("入力JSON（生データ）", expanded=False):
             st.code(_safe_json_dumps(opal_dict), language="json")
 
         with st.expander("Final JSON（全体）", expanded=False):
@@ -618,7 +618,7 @@ def main() -> None:
     st.caption(APP_SUB)
     st.caption(TAGLINE)
     st.info(
-        "**なぜ「止まる Agent」が必要なのか**\n"
+        "**なぜ「止まる自動判定」が必要なのか**\n"
         "現場では「誰かが確認したはず」という前提で処理されます。\n"
         "月末・決算期は、AIの結果も人の判断も十分に疑う余裕がありません。\n"
         "この仕組みは、疑わしい行を自動でGUIDANCEで停止し、\n"
@@ -646,7 +646,7 @@ def main() -> None:
     st.session_state.policy_path = policy_path
     st.session_state.policy_display = policy_display
 
-    tab_json, tab_pdf = st.tabs(["📋 Opal JSON入力", "📤 PDFアップロード"])
+    tab_json, tab_pdf = st.tabs(["📋 JSON入力", "📤 PDFアップロード"])
     with tab_json:
         _render_json_flow(policy_display, policy_path)
     with tab_pdf:

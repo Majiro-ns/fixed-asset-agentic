@@ -20,16 +20,39 @@ _EMPTY_POLICY = {
 
 
 def _fresh_policy() -> Dict[str, Any]:
+    """Return a deep copy of the empty policy template.
+
+    Returns:
+        A new dict with the default empty-policy structure (keywords, thresholds, regex).
+    """
     return deepcopy(_EMPTY_POLICY)
 
 
 def _ensure_list_of_str(value: Any) -> list:
+    """Coerce *value* into a list of strings, dropping non-string elements.
+
+    Args:
+        value: Expected to be a list; non-list inputs return ``[]``.
+
+    Returns:
+        A list containing only the string elements of *value*.
+    """
     if not isinstance(value, list):
         return []
     return [str(v) for v in value if isinstance(v, str)]
 
 
 def _ensure_int_or_none(value: Any) -> Optional[int]:
+    """Convert a numeric *value* to ``int``, or return ``None`` for non-numeric inputs.
+
+    Booleans are explicitly treated as non-numeric and return ``None``.
+
+    Args:
+        value: Raw value to convert.
+
+    Returns:
+        An ``int`` if *value* is numeric, otherwise ``None``.
+    """
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
@@ -38,6 +61,14 @@ def _ensure_int_or_none(value: Any) -> Optional[int]:
 
 
 def _ensure_str_or_none(value: Any) -> Optional[str]:
+    """Return *value* if it is a non-empty string, otherwise ``None``.
+
+    Args:
+        value: Raw value to validate.
+
+    Returns:
+        The original string or ``None``.
+    """
     if isinstance(value, str) and value != "":
         return value
     return None

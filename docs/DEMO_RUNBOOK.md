@@ -20,7 +20,7 @@
 
 ## 3. デモ手順（2〜3分）— Docker ルート
 
-**作業ディレクトリ**: リポジトリルート（例: `c:\Users\owner\Desktop\fixed-asset-agentic-repo`）。他環境では `cd` でリポジトリルートに移動。
+**作業ディレクトリ**: リポジトリルート（例: `c:\Users\owner\Desktop\fixed-asset-ashigaru`）。他環境では `cd` でリポジトリルートに移動。
 
 ### 成功基準
 
@@ -34,7 +34,7 @@
 ### (a) Docker build / run
 
 ```powershell
-cd c:\Users\owner\Desktop\fixed-asset-agentic-repo
+cd c:\Users\owner\Desktop\fixed-asset-ashigaru
 docker build -t fixed-asset-api .
 ```
 
@@ -51,7 +51,7 @@ docker run --rm -e PORT=8080 -p 8080:8080 fixed-asset-api
 別ターミナルで 1 行ずつ:
 
 ```powershell
-cd c:\Users\owner\Desktop\fixed-asset-agentic-repo
+cd c:\Users\owner\Desktop\fixed-asset-ashigaru
 .\scripts\docker_smoke.ps1
 ```
 

@@ -37,15 +37,21 @@ tests/
 # Scripts (not needed in container)
 scripts/
 
-# UI (not needed for API)
+# UI (API build does not need ui/, but UI build does)
+# Exclude ui/ then re-include files needed by Dockerfile.ui / ui/Dockerfile
 ui/
-requirements-ui.txt
+!ui/app_minimal.py
+!ui/app.py
+!ui/styles.py
+!ui/similar_cases.py
+!ui/batch_upload.py
+!ui/components/
 
 # Other
-脳みぁEtxt
-起動コマンチEtxt
+脳みそ.txt
+起動コマンド.txt
 INDEX.md
 
 # Japanese filenames (cause container import issues)
-�]�݂�.txt
+お読みください.txt
 LORD_INSTRUCTIONS*.md

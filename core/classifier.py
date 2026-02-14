@@ -35,11 +35,37 @@ EXPENSE_KEYWORDS = [
     "年間",
     "定期",
     "契約",
+    # 明確に資産性なし（法人税基本通達7-3-3の2）
+    "撤去",
+    "廃棄",
+    "処分",
+    "解体",
+    "除却",
+    "原状回復",
+    "養生",
+    "仮設",
+]
+
+# 取得価額に算入すべきキーワード（運搬費等）
+ASSET_INCLUSION_KEYWORDS = [
+    "運搬",
+    "運賃",
+    "搬入",
+    "配送",
+    "据付",
+    "荷造",
+]
+
+# 按分対象キーワード（資産/費用の金額比率で按分）
+PRORATE_KEYWORDS = [
+    "諸経費",
+    "一般管理費",
+    "現場管理費",
+    "共通仮設",
 ]
 
 MIXED_KEYWORDS = [
     "一式",
-    "撤去",
     "移設",
     "既設",
 ]
@@ -54,10 +80,28 @@ GUIDANCE_RATIONALE = "判断が割れる可能性があるため判定しませ�
 
 
 def _find_keywords(text: str, keywords: List[str]) -> List[str]:
+    """Return the subset of *keywords* that appear in *text*.
+
+    Args:
+        text: The text to search (typically a description or source_text).
+        keywords: Candidate keywords to look for.
+
+    Returns:
+        List of matched keywords, preserving the order of *keywords*.
+    """
     return [kw for kw in keywords if kw in text]
 
 
 def _merge_keywords(base: List[str], additions: List[str]) -> List[str]:
+    """Merge two keyword lists, preserving order and removing duplicates.
+
+    Args:
+        base: Primary keyword list.
+        additions: Additional keywords to append (duplicates ignored).
+
+    Returns:
+        A new list containing all unique keywords from *base* then *additions*.
+    """
     merged: List[str] = []
     seen = set()
     for kw in base + additions:
@@ -68,10 +112,24 @@ def _merge_keywords(base: List[str], additions: List[str]) -> List[str]:
 
 
 def _safe_policy(policy: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Return *policy* if it is a dict, otherwise return an empty policy skeleton.
+
+    Args:
+        policy: A policy configuration dict or ``None``.
+
+    Returns:
+        A dict guaranteed to have ``keywords``, ``thresholds``, and ``regex`` keys.
+    """
     return policy if isinstance(policy, dict) else {"keywords": {}, "thresholds": {}, "regex": {}}
 
 
 def _append_flag(flags: List[str], flag: str) -> None:
+    """Append *flag* to *flags* only if it is not already present (dedup guard).
+
+    Args:
+        flags: Mutable list of flag strings.
+        flag: The flag string to add.
+    """
     if flag not in flags:
         flags.append(flag)
 
@@ -173,6 +231,22 @@ def classify_line_item(
     policy: Optional[Dict[str, Any]] = None,
     doc: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    """Classify a single line item as CAPITAL_LIKE, EXPENSE_LIKE, or GUIDANCE.
+
+    Classification uses keyword matching against the item description and
+    evidence source_text, policy overrides (regex, guidance keywords, amount
+    thresholds), and Japanese tax-law rules (10万/20万/30万/60万 thresholds).
+    The item dict is updated **in-place** with ``classification``, ``label_ja``,
+    ``rationale_ja``, ``flags``, and ``confidence`` keys.
+
+    Args:
+        item: A normalized line-item dict (must contain at least ``description``).
+        policy: Optional policy configuration for keyword/threshold overrides.
+        doc: The parent document dict (used to retrieve ``totals`` for tax rules).
+
+    Returns:
+        The same *item* dict, updated with classification results.
+    """
     # descriptionに加え、evidence.source_textからもキーワード検索
     description = str(item.get("description") or "")
     evidence = item.get("evidence") or {}
@@ -189,8 +263,20 @@ def classify_line_item(
     exp_hits = _find_keywords(search_text, expense_keywords)
     mixed_hits = _find_keywords(search_text, MIXED_KEYWORDS)
     guidance_hits = _find_keywords(search_text, guidance_keywords)
+    asset_inclusion_hits = _find_keywords(search_text, ASSET_INCLUSION_KEYWORDS)
+    prorate_hits = _find_keywords(search_text, PRORATE_KEYWORDS)
 
     flags: List[str] = []
+
+    # 按分対象の場合はフラグを立てる（後で按分処理）
+    if prorate_hits:
+        flags.append(f"prorate:{prorate_hits[0]}")
+        item["_prorate"] = True
+
+    # 運搬費等は資産取得価額に算入
+    if asset_inclusion_hits and not exp_hits:
+        cap_hits = cap_hits or asset_inclusion_hits
+        flags.append(f"asset_inclusion:{asset_inclusion_hits[0]}")
 
     # Guidance if mixed keywords present, or both sides hit, or neither side hits.
     if mixed_hits:
@@ -237,6 +323,7 @@ def classify_line_item(
 
     # Tax rules (10/20/30/60万): add flags as reference info
     # キーワードで明確に判定できている場合は税ルールで上書きしない
+    keyword_based = classification in (schema.CAPITAL_LIKE, schema.EXPENSE_LIKE)
     total_amount = None
     if isinstance(doc, dict):
         totals = doc.get("totals") or {}
@@ -245,8 +332,8 @@ def classify_line_item(
     for tr in tax_results:
         flag = f"tax_rule:{tr['rule_id']}:{tr['reason']}"
         _append_flag(flags, flag)
-        # 既にGUIDANCEの場合のみ税ルールを適用（CAPITAL_LIKE/EXPENSE_LIKEは維持）
-        if tr.get("suggests_guidance") is True and classification == schema.GUIDANCE:
+        # 税ルールがGUIDANCEを示す場合でも、キーワードで明確に判定済みなら上書きしない
+        if tr.get("suggests_guidance") is True and not keyword_based:
             classification = schema.GUIDANCE
 
     label_ja = LABEL_JA[classification]
@@ -275,7 +362,70 @@ def classify_line_item(
     return item
 
 
+def _prorate_items(line_items: List[Dict[str, Any]]) -> None:
+    """諸経費等の按分対象明細を、資産/費用の金額比率で按分する。
+
+    _prorate フラグが立った明細の金額を、他の明細の CAPITAL_LIKE / EXPENSE_LIKE
+    の金額比率で按分し、それぞれの分類に分配する。
+    按分結果は元の明細を更新する（1円未満は経費側に寄せる）。
+    """
+    prorate_items = [it for it in line_items if isinstance(it, dict) and it.get("_prorate")]
+    if not prorate_items:
+        return
+
+    capital_total = sum(
+        (it.get("amount") or 0) for it in line_items
+        if isinstance(it, dict) and it.get("classification") == schema.CAPITAL_LIKE and not it.get("_prorate")
+    )
+    expense_total = sum(
+        (it.get("amount") or 0) for it in line_items
+        if isinstance(it, dict) and it.get("classification") == schema.EXPENSE_LIKE and not it.get("_prorate")
+    )
+    base_total = capital_total + expense_total
+
+    if base_total <= 0:
+        return
+
+    capital_ratio = capital_total / base_total
+
+    for item in prorate_items:
+        amt = item.get("amount") or 0
+        if amt <= 0:
+            continue
+        # 経費按分額（1円未満は経費側に寄せる — 殿の指示）
+        expense_share = int(amt * (1 - capital_ratio) + 0.5)
+        capital_share = amt - expense_share
+
+        item["_prorate_capital"] = capital_share
+        item["_prorate_expense"] = expense_share
+        # 按分結果に基づき分類（資産比率が高ければCAPITAL_LIKE）
+        if capital_share >= expense_share:
+            item["classification"] = schema.CAPITAL_LIKE
+            item["rationale_ja"] = f"諸経費を按分: 資産¥{capital_share:,} / 経費¥{expense_share:,}"
+        else:
+            item["classification"] = schema.EXPENSE_LIKE
+            item["rationale_ja"] = f"諸経費を按分: 経費¥{expense_share:,} / 資産¥{capital_share:,}"
+        item["label_ja"] = LABEL_JA[item["classification"]]
+        # 一時フラグ除去
+        del item["_prorate"]
+
+
 def classify_document(doc: Dict[str, Any], policy: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Classify every line item in a v1-schema document.
+
+    Iterates over ``doc["line_items"]`` and applies :func:`classify_line_item`
+    to each entry.  Non-dict items are silently skipped.
+    After individual classification, prorate items (諸経費等) are distributed
+    based on the capital/expense ratio.
+
+    Args:
+        doc: A normalized document dict (v1 schema).
+        policy: Optional policy configuration passed through to the line-item
+                classifier.
+
+    Returns:
+        The same *doc* dict with all line items classified in-place.
+    """
     if not isinstance(doc, dict):
         return doc
 
@@ -286,5 +436,8 @@ def classify_document(doc: Dict[str, Any], policy: Optional[Dict[str, Any]] = No
     for item in line_items:
         if isinstance(item, dict):
             classify_line_item(item, policy, doc=doc)
+
+    # 諸経費の按分処理
+    _prorate_items(line_items)
 
     return doc
