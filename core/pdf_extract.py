@@ -83,7 +83,7 @@ def _extract_all_tables_pdfplumber(path: Path) -> Dict[int, List[List[List[Optio
                 tables = _extract_tables_from_plumber_page(page)
                 if tables:
                     out[i + 1] = tables
-    except (OSError, ValueError, TypeError) as e:
+    except Exception as e:
         logger.warning("pdfplumber table extraction failed: %s", e)
     return out
 
