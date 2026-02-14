@@ -1,0 +1,10 @@
+{
+  "name": "fixed-asset-agentic-zenn",
+  "private": true,
+  "scripts": {
+    "preview": "zenn preview"
+  },
+  "dependencies": {
+    "zenn-cli": "^0.1.0"
+  }
+}
