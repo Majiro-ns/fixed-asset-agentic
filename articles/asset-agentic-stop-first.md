@@ -2,7 +2,7 @@
 title: "「止まれないAI」が本当の脅威だ ― 経理判断を守るStop-first設計"
 emoji: "🛑"
 type: "idea"
-topics: ["gch4", "googlecloud", "agenticai", "fastapi", "経理DX"]
+topics: ["gch4", "googlecloud", "agenticai", "fastapi", "gemini"]
 published: false
 ---
 
